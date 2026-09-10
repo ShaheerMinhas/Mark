@@ -14,6 +14,8 @@ Mark splits into two services:
 1. Push this repo to **GitHub** (Railway and Netlify deploy from Git).
 2. Accounts on [railway.app](https://railway.app) and [netlify.com](https://netlify.com).
 
+**Repo:** https://github.com/ShaheerMinhas/Mark
+
 ---
 
 ## Part 1 — Deploy backend on Railway
