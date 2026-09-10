@@ -1,0 +1,10 @@
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback — Netlify serves index.html for client-side routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
