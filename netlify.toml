@@ -3,8 +3,11 @@
   command = "npm run build"
   publish = "dist"
 
-# SPA fallback — Netlify serves index.html for client-side routes
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Set in Netlify → Site settings → Environment variables:
+# VITE_API_URL = https://YOUR-MARK-SERVICE.up.railway.app
+#
+# prebuild.mjs writes public/_redirects to proxy /api/* → Railway
+# so the React app can use relative /api paths (no CORS issues).
+
+[build.environment]
+  NODE_VERSION = "20"

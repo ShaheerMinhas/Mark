@@ -14,7 +14,8 @@ Mark splits into two services:
 1. Push this repo to **GitHub** (Railway and Netlify deploy from Git).
 2. Accounts on [railway.app](https://railway.app) and [netlify.com](https://netlify.com).
 
-**Repo:** https://github.com/ShaheerMinhas/Mark
+**Repo:** https://github.com/ShaheerMinhas/Mark  
+**Frontend:** https://markdiscovery.netlify.app
 
 ---
 
@@ -40,7 +41,8 @@ Open your **web service** → **Variables**:
 | Variable | Value | Required |
 |----------|-------|----------|
 | `MARK_SECRET_KEY` | Long random string (32+ chars) | Yes |
-| `CORS_ORIGINS` | Your Netlify URL, e.g. `https://mark-app.netlify.app` | Yes |
+| `CORS_ORIGINS` | `https://markdiscovery.netlify.app` | Yes |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference from Postgres service) | Yes |
 | `OPENAI_API_KEY` | OpenAI key (optional, for AI descriptions) | No |
 
 `DATABASE_URL` is set automatically when Postgres is linked.
@@ -86,7 +88,9 @@ Netlify reads `netlify.toml` automatically:
 
 | Key | Value |
 |-----|-------|
-| `VITE_API_URL` | Your Railway URL, e.g. `https://mark-production.up.railway.app` |
+| `VITE_API_URL` | Your Railway Mark service URL, e.g. `https://mark-xxxx.up.railway.app` |
+
+This enables the `/api` proxy so the Netlify site talks to Railway without CORS issues.
 
 No trailing slash.
 

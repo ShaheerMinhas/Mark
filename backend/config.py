@@ -19,7 +19,10 @@ def _database_url() -> str:
 
 DATABASE_URL = _database_url()
 SECRET_KEY = os.getenv("MARK_SECRET_KEY", "change-me-in-production-use-long-random-string")
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "https://markdiscovery.netlify.app,http://localhost:5173,http://127.0.0.1:5173",
+)
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("MARK_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days
 SESSION_ENCRYPTION_KEY = os.getenv("MARK_SESSION_KEY", SECRET_KEY[:32].ljust(32, "0"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
