@@ -3,11 +3,7 @@
   command = "npm run build"
   publish = "dist"
 
-# Set in Netlify → Site settings → Environment variables:
-# VITE_API_URL = https://YOUR-MARK-SERVICE.up.railway.app
-#
-# prebuild.mjs writes public/_redirects to proxy /api/* → Railway
-# so the React app can use relative /api paths (no CORS issues).
-
+# prebuild.mjs writes /api/* proxy to Railway using VITE_API_URL
 [build.environment]
   NODE_VERSION = "20"
+  VITE_API_URL = "https://web-production-8148bf.up.railway.app"
