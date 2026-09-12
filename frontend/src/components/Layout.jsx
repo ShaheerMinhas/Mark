@@ -1,9 +1,9 @@
 import { useAuth } from "../context/AuthContext.jsx";
 
 const NAV = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "search", label: "New search" },
-  { id: "org", label: "Organization" },
+  { id: "dashboard", label: "Dashboard", short: "Home" },
+  { id: "search", label: "New search", short: "Search" },
+  { id: "org", label: "Organization", short: "Team" },
 ];
 
 export default function Layout({ view, setView, children }) {
@@ -13,8 +13,19 @@ export default function Layout({ view, setView, children }) {
     <div className="screen">
       <div className="atmosphere" aria-hidden="true" />
       <header className="topbar">
-        <span className="brand-sm">Mark</span>
-        <nav className="nav">
+        <div className="topbar-row">
+          <span className="brand-sm">Mark</span>
+          <div className="user-bar">
+            <span className="user-name" title={user.full_name}>
+              {user.full_name}
+            </span>
+            <span className="user-type">({user.account_type})</span>
+            <button type="button" className="ghost btn-signout" onClick={logout}>
+              Sign out
+            </button>
+          </div>
+        </div>
+        <nav className="nav" aria-label="Main">
           {NAV.map((item) => (
             <button
               key={item.id}
@@ -22,16 +33,11 @@ export default function Layout({ view, setView, children }) {
               className={`nav-btn ${view === item.id ? "active" : ""}`}
               onClick={() => setView(item.id)}
             >
-              {item.label}
+              <span className="nav-label-full">{item.label}</span>
+              <span className="nav-label-short">{item.short}</span>
             </button>
           ))}
         </nav>
-        <div className="user-bar">
-          <span>{user.full_name} ({user.account_type})</span>
-          <button type="button" className="ghost" onClick={logout}>
-            Sign out
-          </button>
-        </div>
       </header>
       <main className="content">{children}</main>
     </div>

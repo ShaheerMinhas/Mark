@@ -14,12 +14,19 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-body);
   color: var(--ink);
   background: linear-gradient(165deg, #dceee7, var(--paper) 45%, #eef6f2);
+  overflow-x: hidden;
 }
 
 #root { min-height: 100vh; }
@@ -36,8 +43,9 @@ body {
 
 .auth-card {
   max-width: 420px;
-  margin: 4rem auto;
-  padding: 2rem;
+  width: calc(100% - 2rem);
+  margin: 2rem auto;
+  padding: 1.5rem;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--line);
   border-radius: calc(var(--radius) + 4px);
@@ -53,6 +61,22 @@ body {
 
 .auth-sub { color: var(--ink-soft); margin: 0.25rem 0 1.5rem; }
 
+.auth-back {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-back:hover { color: var(--ink); }
+
 .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
 .tab {
   flex: 1;
@@ -67,10 +91,12 @@ body {
 
 .auth-form { display: grid; gap: 0.75rem; }
 .auth-form input, .auth-form button {
-  padding: 0.75rem;
+  padding: 0.85rem 0.75rem;
+  min-height: 48px;
   border-radius: 8px;
   border: 1px solid var(--line);
   font: inherit;
+  font-size: 16px;
 }
 .auth-form button {
   background: var(--accent);
@@ -92,12 +118,24 @@ body {
 
 .topbar {
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    0.75rem max(1rem, env(safe-area-inset-left));
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .brand-sm {
@@ -107,24 +145,61 @@ body {
   color: var(--ink);
 }
 
-.nav { display: flex; gap: 0.35rem; flex: 1; }
+.nav {
+  display: flex;
+  gap: 0.35rem;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.nav::-webkit-scrollbar { display: none; }
+
 .nav-btn {
-  padding: 0.5rem 0.85rem;
+  flex: 1 0 auto;
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
   border: none;
   background: transparent;
   border-radius: 999px;
   cursor: pointer;
   font: inherit;
+  font-size: 0.9rem;
   color: var(--ink-soft);
+  white-space: nowrap;
 }
 .nav-btn.active, .nav-btn:hover { background: rgba(16, 35, 31, 0.06); color: var(--ink); }
 
-.user-bar { display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; }
+.nav-label-short { display: none; }
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 8rem;
+}
+.user-type { color: var(--ink-soft); white-space: nowrap; }
+.btn-signout {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
 
 .content {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
 }
 
 h2 {
@@ -157,11 +232,14 @@ h2 {
 
 .field input, .field select, .field textarea {
   width: 100%;
-  padding: 0.7rem 0.85rem;
+  padding: 0.75rem 0.85rem;
+  min-height: 48px;
   border: 1px solid var(--line);
   border-radius: 8px;
   font: inherit;
+  font-size: 16px;
 }
+.field textarea { min-height: 96px; resize: vertical; }
 
 .filter-grid {
   display: grid;
@@ -176,8 +254,11 @@ h2 {
   color: #fff;
   border: none;
   border-radius: 999px;
-  padding: 0.8rem 1.4rem;
+  padding: 0.85rem 1.4rem;
+  min-height: 48px;
+  width: 100%;
   font: inherit;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -191,8 +272,10 @@ h2 {
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0.45rem 0.9rem;
+  padding: 0.5rem 0.9rem;
+  min-height: 40px;
   font: inherit;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
@@ -228,7 +311,10 @@ h2 {
   font-size: 0.82rem;
   color: var(--ink-soft);
 }
-.lead-fields a { color: var(--accent-deep); }
+.lead-fields a {
+  color: var(--accent-deep);
+  word-break: break-all;
+}
 
 .empty {
   padding: 1.25rem;
@@ -243,8 +329,56 @@ h2 {
 .results h3 { margin: 0; font-family: var(--font-display); }
 
 @media (max-width: 720px) {
-  .topbar { flex-wrap: wrap; }
-  .nav { order: 3; width: 100%; overflow-x: auto; }
-  .search-item { flex-direction: column; align-items: flex-start; }
+  .brand { font-size: 2.2rem; }
+  .brand-sm { font-size: 1.35rem; }
+  h2 { font-size: 1.55rem; }
+  .lede { font-size: 0.95rem; margin-bottom: 1rem; }
+  .auth-card { margin: 1rem auto 2rem; padding: 1.25rem; }
+  .filter-grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: span 1; }
+  .search-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+  .search-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .search-actions .ghost {
+    flex: 1 1 calc(33% - 0.35rem);
+    min-width: 4.5rem;
+    text-align: center;
+  }
+  .lead-top {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .score { align-self: flex-start; }
+  .lead-fields {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .user-type { display: none; }
+  .user-name { max-width: 5.5rem; }
+  .nav-label-full { display: none; }
+  .nav-label-short { display: inline; }
+  .panel, .lead, .search-item, .org-item { padding: 0.9rem; }
+}
+
+@media (max-width: 380px) {
+  .user-name { max-width: 4rem; }
+  .btn-signout { padding: 0.35rem 0.55rem; font-size: 0.75rem; }
+  .nav-btn { padding: 0.5rem 0.65rem; font-size: 0.85rem; }
+}
+
+@media (min-width: 721px) {
+  .topbar {
+    flex-direction: row;
+    align-items: center;
+    padding: 1rem 1.5rem;
+  }
+  .nav { flex: 1; width: auto; }
+  .actions button, button[type="submit"]:not(.ghost) { width: auto; }
+  .user-name { max-width: 12rem; }
 }

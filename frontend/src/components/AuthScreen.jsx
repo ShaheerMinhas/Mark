@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 
-export default function AuthScreen() {
+export default function AuthScreen({ initialTab = "login", onBack }) {
   const { login, register } = useAuth();
-  const [tab, setTab] = useState("login");
+  const [tab, setTab] = useState(initialTab);
   const [error, setError] = useState("");
   const [accountType, setAccountType] = useState("individual");
 
@@ -45,6 +45,11 @@ export default function AuthScreen() {
     <div className="screen">
       <div className="atmosphere" aria-hidden="true" />
       <div className="auth-card">
+        {onBack && (
+          <button type="button" className="auth-back" onClick={onBack}>
+            ← Back to home
+          </button>
+        )}
         <h1 className="brand">Mark</h1>
         <p className="auth-sub">Lead discovery for individuals &amp; teams</p>
 

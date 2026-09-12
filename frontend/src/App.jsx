@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "./context/AuthContext.jsx";
+import LandingPage from "./components/LandingPage.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
 import Layout from "./components/Layout.jsx";
 import Dashboard from "./components/Dashboard.jsx";
@@ -10,6 +11,7 @@ export default function App() {
   const { user, loading } = useAuth();
   const [view, setView] = useState("dashboard");
   const [searchPrefill, setSearchPrefill] = useState(null);
+  const [guestScreen, setGuestScreen] = useState("landing");
 
   if (loading) {
     return (
@@ -21,7 +23,22 @@ export default function App() {
     );
   }
 
-  if (!user) return <AuthScreen />;
+  if (!user) {
+    if (guestScreen === "landing") {
+      return (
+        <LandingPage
+          onSignIn={() => setGuestScreen("auth-login")}
+          onGetStarted={() => setGuestScreen("auth-register")}
+        />
+      );
+    }
+    return (
+      <AuthScreen
+        initialTab={guestScreen === "auth-register" ? "register" : "login"}
+        onBack={() => setGuestScreen("landing")}
+      />
+    );
+  }
 
   const openSearch = (searchId) => {
     setSearchPrefill({ searchId });
