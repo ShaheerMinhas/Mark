@@ -45,6 +45,16 @@ Then run only the backend — it serves the React app from `frontend/dist` at ht
 
 SQLite file: `D:\mark\data\mark.db`
 
+## Roadmap & tasks
+
+Product plan with pickable tasks (checkboxes, task IDs, dependencies):
+
+- **[docs/ROADMAP.md](./docs/ROADMAP.md)** — main backlog (start here)
+- **[docs/COMPETITOR-GAP.md](./docs/COMPETITOR-GAP.md)** — what we do / don’t match vs Scrupp, AirScale, etc.
+- **[docs/TASK-TEMPLATE.md](./docs/TASK-TEMPLATE.md)** — copy when opening a task
+
+**Workflow:** pick next unchecked task in ROADMAP → branch `feat/roadmap-1.3-…` → ship → check box → log in Changelog.
+
 ## Deploy to production
 
 See **[DEPLOY.md](./DEPLOY.md)** for Railway (backend) + Netlify (frontend) setup.
