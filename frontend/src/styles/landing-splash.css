@@ -1,0 +1,123 @@
+/* Landing intro splash — Mark letter reveal + dot at end */
+
+body.landing-splash-active {
+  overflow: hidden;
+}
+
+.landing-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a1512;
+  opacity: 1;
+  transition: opacity 0.36s ease;
+}
+
+.landing-splash--exit {
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+.landing-splash-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.landing-splash-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+}
+
+.landing-splash-orb-a {
+  width: min(420px, 80vw);
+  height: min(420px, 80vw);
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(232, 93, 4, 0.35), transparent 70%);
+}
+
+.landing-splash-orb-b {
+  width: min(320px, 70vw);
+  height: min(320px, 70vw);
+  bottom: 15%;
+  right: 10%;
+  background: radial-gradient(circle, rgba(15, 122, 90, 0.28), transparent 70%);
+}
+
+.mark-loader {
+  position: relative;
+  z-index: 1;
+  padding: 1rem;
+}
+
+.mark-loader-track {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1em;
+}
+
+.mark-text {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 12vw, 5rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: #fff;
+  line-height: 1;
+  min-width: 4.5ch;
+}
+
+.mark-dot {
+  flex-shrink: 0;
+  width: 0.28em;
+  height: 0.28em;
+  margin-bottom: 0.06em;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 18px rgba(232, 93, 4, 0.55);
+}
+
+.mark-dot--at-end {
+  animation: mark-dot-pop-in 0.36s cubic-bezier(0.34, 1.4, 0.64, 1) forwards,
+    mark-dot-bounce 0.44s ease-in-out 0.36s infinite;
+  opacity: 0;
+}
+
+@keyframes mark-dot-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0) translateY(0.2em);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes mark-dot-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.35em);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-dot--at-end {
+    animation: none;
+    opacity: 1;
+  }
+
+  .landing-splash {
+    transition: none;
+  }
+}

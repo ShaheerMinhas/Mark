@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import LandingSplash from "./LandingSplash.jsx";
 import "../styles/landing.css";
 
 const FEATURES = [
@@ -48,6 +49,9 @@ const LEAD_FIELDS = [
 export default function LandingPage({ onSignIn, onGetStarted }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
+
+  const finishSplash = useCallback(() => setSplashDone(true), []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -63,7 +67,8 @@ export default function LandingPage({ onSignIn, onGetStarted }) {
   const closeMenu = () => setMenuOpen(false);
 
   return (
-    <div className="landing">
+    <>
+    <div className={`landing${splashDone ? "" : " landing--under-splash"}`} aria-hidden={!splashDone}>
       <div className="landing-bg" aria-hidden="true">
         <div className="landing-orb landing-orb-a" />
         <div className="landing-orb landing-orb-b" />
@@ -317,5 +322,7 @@ export default function LandingPage({ onSignIn, onGetStarted }) {
         </div>
       </footer>
     </div>
+    {!splashDone && <LandingSplash onComplete={finishSplash} />}
+    </>
   );
 }

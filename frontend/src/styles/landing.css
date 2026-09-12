@@ -1,7 +1,13 @@
 /* Landing page — responsive marketing layout */
 
-body.landing-active {
+body.landing-active,
+html:has(body.landing-active) {
   background: #0a1512;
+}
+
+.landing--under-splash {
+  pointer-events: none;
+  user-select: none;
 }
 
 .landing {
