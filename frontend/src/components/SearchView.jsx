@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import FilterGrid from "./FilterGrid.jsx";
-import LeadCard from "./LeadCard.jsx";
+import LeadsTable from "./LeadsTable.jsx";
 
 function defaultFilterValues(filterDefs) {
   const values = {};
@@ -118,11 +118,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
             <h3>Results</h3>
             <p className="meta">{meta}</p>
           </div>
-          <ul className="lead-list">
-            {leads.map((lead, i) => (
-              <LeadCard key={lead.id ?? i} lead={lead} />
-            ))}
-          </ul>
+          <LeadsTable leads={leads} />
         </section>
       )}
     </section>
