@@ -33,7 +33,7 @@ Pick **one task at a time**. Check boxes as you ship. Do not skip **Step 1** —
 
 | ID | Task | Deps |
 |----|------|------|
-| 1.1 | [ ] Add `status` progress to `SearchJob` (`pending`, `running`, `completed`, `failed`) | — |
+| 1.1 | [x] Add `status` progress to `SearchJob` (`pending`, `running`, `completed`, `failed`) | — |
 | 1.2 | [ ] Background worker (RQ/Celery or Railway worker process) | 1.1 |
 | 1.3 | [ ] API: `POST /searches` returns job id immediately; poll `GET /searches/{id}` | 1.2 |
 | 1.4 | [ ] Frontend: progress UI (spinner + “Searching… X leads”) | 1.3 |
@@ -179,3 +179,4 @@ If nothing is checked in Step 1 yet, start with **1.1**.
 | Date | Task | Note |
 |------|------|------|
 | 2026-09-12 | — | Roadmap created |
+| 2026-09-12 | 1.1 | SearchJobStatus enum + lifecycle in search_service |

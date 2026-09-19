@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./context/AuthContext.jsx";
 import LandingPage from "./components/LandingPage.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
@@ -12,6 +12,15 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [searchPrefill, setSearchPrefill] = useState(null);
   const [guestScreen, setGuestScreen] = useState("landing");
+  const [dashboardKey, setDashboardKey] = useState(0);
+  const prevView = useRef(view);
+
+  useEffect(() => {
+    if (view === "dashboard" && prevView.current === "search") {
+      setDashboardKey((k) => k + 1);
+    }
+    prevView.current = view;
+  }, [view]);
 
   if (loading) {
     return (
@@ -47,7 +56,16 @@ export default function App() {
 
   return (
     <Layout view={view} setView={setView}>
-      {view === "dashboard" && <Dashboard onOpenSearch={openSearch} />}
+      {view === "dashboard" && (
+        <Dashboard
+          key={dashboardKey}
+          onOpenSearch={openSearch}
+          onNewSearch={() => {
+            setSearchPrefill(null);
+            setView("search");
+          }}
+        />
+      )}
       {view === "search" && (
         <SearchView
           prefill={searchPrefill}

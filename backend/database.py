@@ -22,7 +22,26 @@ def get_db():
         db.close()
 
 
+def _normalize_search_job_statuses() -> None:
+    """Fix legacy status strings (e.g. COMPLETED vs completed) after enum rollout."""
+    from sqlalchemy import text
+
+    fixes = {
+        "COMPLETED": "completed",
+        "PENDING": "pending",
+        "RUNNING": "running",
+        "FAILED": "failed",
+    }
+    with engine.begin() as conn:
+        for old, new in fixes.items():
+            conn.execute(
+                text("UPDATE search_jobs SET status = :new WHERE status = :old"),
+                {"old": old, "new": new},
+            )
+
+
 def init_db():
     from backend import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _normalize_search_job_statuses()

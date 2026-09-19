@@ -30,6 +30,17 @@ class OrgRole(str, enum.Enum):
     MEMBER = "member"
 
 
+class SearchJobStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    return [member.value for member in enum_cls]
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -97,7 +108,15 @@ class SearchJob(Base):
     linkedin_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     query_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     mode: Mapped[str] = mapped_column(String(50), default="public")
-    status: Mapped[str] = mapped_column(String(50), default="completed")
+    status: Mapped[SearchJobStatus] = mapped_column(
+        Enum(
+            SearchJobStatus,
+            values_callable=_enum_values,
+            native_enum=False,
+            length=50,
+        ),
+        default=SearchJobStatus.PENDING,
+    )
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True)

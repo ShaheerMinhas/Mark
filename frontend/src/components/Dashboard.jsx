@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, downloadExport } from "../api/client.js";
 
-export default function Dashboard({ onOpenSearch }) {
+export default function Dashboard({ onOpenSearch, onNewSearch }) {
   const [searches, setSearches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await api("/api/searches");
       setSearches(data);
-    } catch {
+    } catch (err) {
       setSearches([]);
+      setError(err.message || "Could not load saved searches");
     } finally {
       setLoading(false);
     }
@@ -21,12 +24,25 @@ export default function Dashboard({ onOpenSearch }) {
 
   return (
     <section className="view">
-      <h2>Saved searches</h2>
-      <p className="lede">Your lead lists are stored on-site. Export anytime as CSV or XML.</p>
+      <div className="view-head">
+        <div>
+          <h2>Saved searches</h2>
+          <p className="lede">Your lead lists are stored on-site. Export anytime as CSV or XML.</p>
+        </div>
+        <button type="button" className="btn-new-search" onClick={onNewSearch}>
+          New search
+        </button>
+      </div>
+      {error && <p className="error-msg">{error}</p>}
       <ul className="search-list">
         {loading && <li className="empty">Loading…</li>}
         {!loading && !searches.length && (
-          <li className="empty">No saved searches yet. Run your first search.</li>
+          <li className="empty">
+            <p>No saved searches yet.</p>
+            <button type="button" className="btn-new-search btn-new-search--inline" onClick={onNewSearch}>
+              Run your first search
+            </button>
+          </li>
         )}
         {searches.map((s) => (
           <li key={s.id} className="search-item">
@@ -37,17 +53,27 @@ export default function Dashboard({ onOpenSearch }) {
                 {s.prompt.length > 100 ? "…" : ""}
               </p>
               <span className="meta">
-                {s.lead_count} leads · {s.mode} · {new Date(s.created_at).toLocaleDateString()}
+                {s.lead_count} leads · {s.status} · {s.mode} · {new Date(s.created_at).toLocaleDateString()}
               </span>
             </div>
             <div className="search-actions">
               <button type="button" className="ghost" onClick={() => onOpenSearch(s.id)}>
                 View
               </button>
-              <button type="button" className="ghost" onClick={() => downloadExport(s.id, "csv")}>
+              <button
+                type="button"
+                className="ghost"
+                disabled={s.status !== "completed"}
+                onClick={() => downloadExport(s.id, "csv")}
+              >
                 CSV
               </button>
-              <button type="button" className="ghost" onClick={() => downloadExport(s.id, "xml")}>
+              <button
+                type="button"
+                className="ghost"
+                disabled={s.status !== "completed"}
+                onClick={() => downloadExport(s.id, "xml")}
+              >
                 XML
               </button>
             </div>

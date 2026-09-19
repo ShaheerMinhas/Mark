@@ -13,18 +13,7 @@ export default function Layout({ view, setView, children }) {
     <div className="screen">
       <div className="atmosphere" aria-hidden="true" />
       <header className="topbar">
-        <div className="topbar-row">
-          <span className="brand-sm">Mark</span>
-          <div className="user-bar">
-            <span className="user-name" title={user.full_name}>
-              {user.full_name}
-            </span>
-            <span className="user-type">({user.account_type})</span>
-            <button type="button" className="ghost btn-signout" onClick={logout}>
-              Sign out
-            </button>
-          </div>
-        </div>
+        <span className="brand-sm">Mark</span>
         <nav className="nav" aria-label="Main">
           {NAV.map((item) => (
             <button
@@ -38,6 +27,15 @@ export default function Layout({ view, setView, children }) {
             </button>
           ))}
         </nav>
+        <div className="user-bar">
+          <span className="user-name" title={user.full_name}>
+            {user.full_name}
+          </span>
+          <span className="user-type">({user.account_type})</span>
+          <button type="button" className="ghost btn-signout" onClick={logout}>
+            Sign out
+          </button>
+        </div>
       </header>
       <main className="content">{children}</main>
     </div>

@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-from backend.models import AccountType, OrgRole
+from backend.models import AccountType, OrgRole, SearchJobStatus
 
 
 class UserCreate(BaseModel):
@@ -129,7 +129,7 @@ class SearchJobOut(BaseModel):
     linkedin_url: Optional[str]
     query_used: Optional[str]
     mode: str
-    status: str
+    status: SearchJobStatus
     message: Optional[str]
     lead_count: int = 0
     created_at: datetime
