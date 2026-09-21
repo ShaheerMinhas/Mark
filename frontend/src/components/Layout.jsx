@@ -10,7 +10,7 @@ export default function Layout({ view, setView, children }) {
   const { user, logout } = useAuth();
 
   return (
-    <div className="screen">
+    <div className={`screen${view === "search" ? " screen--search" : ""}`}>
       <div className="atmosphere" aria-hidden="true" />
       <header className="topbar">
         <span className="brand-sm">Mark</span>

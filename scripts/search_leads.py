@@ -8,17 +8,19 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT / "backend"))
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from lead_finder import search_leads  # noqa: E402
+from backend.lead_finder import search_leads  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Find marketing leads from a prompt")
     p.add_argument("prompt", help="What leads you want for marketing")
-    p.add_argument("--location", default="")
-    p.add_argument("--industry", default="")
+    p.add_argument("--location", default="", help="Comma-separated locations")
+    p.add_argument("--industry", default="", help="Comma-separated industries")
+    p.add_argument("--company", default="", help="Comma-separated company names")
     p.add_argument("--company-size", default="")
     p.add_argument("--income-level", default="")
     p.add_argument("--gender", default="")
@@ -40,6 +42,7 @@ def main() -> None:
         args.prompt,
         location=args.location,
         industry=args.industry,
+        company=args.company,
         company_size=args.company_size,
         income_level=args.income_level,
         gender=args.gender,

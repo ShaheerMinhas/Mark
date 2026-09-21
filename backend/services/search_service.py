@@ -51,6 +51,7 @@ def run_search(
             prompt,
             location=str(f.get("location") or ""),
             industry=str(f.get("industry") or ""),
+            company=str(f.get("company") or ""),
             interests=list(f.get("interests") or []),
             job_titles=list(f.get("job_titles") or []),
             company_size=str(f.get("company_size") or ""),

@@ -8,10 +8,17 @@ function defaultFilterValues(filterDefs) {
   for (const [key, def] of Object.entries(filterDefs || {})) {
     if (def.type === "boolean") values[key] = def.default !== false;
     else if (def.default != null) values[key] = def.default;
-    else if (def.type === "tags") values[key] = [];
     else values[key] = "";
   }
   return values;
+}
+
+function csvList(value) {
+  if (Array.isArray(value)) return value.flatMap(csvList);
+  return String(value ?? "")
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export default function SearchView({ prefill, onClearPrefill }) {
@@ -63,9 +70,18 @@ export default function SearchView({ prefill, onClearPrefill }) {
     setMeta("Running search…");
     setLeads([]);
     try {
+      const filters = {
+        ...filterValues,
+        job_titles: csvList(filterValues.job_titles),
+        interests: csvList(filterValues.interests),
+        location: String(filterValues.location ?? "").trim(),
+        company: String(filterValues.company ?? "").trim(),
+        company_location: String(filterValues.company_location ?? "").trim(),
+        industry: String(filterValues.industry ?? "").trim(),
+      };
       const data = await api("/api/searches", {
         method: "POST",
-        body: { name: name.trim(), prompt: prompt.trim(), filters: filterValues, save_results: true },
+        body: { name: name.trim(), prompt: prompt.trim(), filters, save_results: true },
       });
       setLeads(data.leads);
       setMeta(`${data.message} · ${data.mode} mode · ${data.count} leads`);
@@ -77,50 +93,61 @@ export default function SearchView({ prefill, onClearPrefill }) {
   }
 
   return (
-    <section className="view">
-      <h2>New lead search</h2>
-      <p className="lede">
-        No LinkedIn login required. Mark finds publicly indexed business people from the open web.
-      </p>
-      <form className="panel" onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="search-name">Search name</label>
-          <input
-            id="search-name"
-            required
-            placeholder="e.g. AI in Healthcare Administration"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+    <section className="view search-view">
+      <div className="search-main">
+        <h2>New lead search</h2>
+        <p className="lede">
+          No LinkedIn login required. Mark finds publicly indexed business people from the open web.
+        </p>
+        <section className="search-results-col" aria-live="polite">
+          {showResults ? (
+            <>
+              <div className="results-head">
+                <h3>Results</h3>
+                <p className="meta">{meta}</p>
+              </div>
+              <LeadsTable leads={leads} />
+            </>
+          ) : (
+            <div className="empty search-results-empty">
+              <p>Set a prompt and filters on the right, then find leads. Results will show here.</p>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <form className="panel search-sidebar" onSubmit={handleSubmit}>
+        <h3 className="search-sidebar-title">Search filters</h3>
+        <div className="search-sidebar-body">
+          <div className="field">
+            <label htmlFor="search-name">Search name</label>
+            <input
+              id="search-name"
+              required
+              placeholder="e.g. AI in Healthcare Administration"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="prompt">Prompt search</label>
+            <textarea
+              id="prompt"
+              rows={3}
+              required
+              placeholder="e.g. Founders of boutique fitness studios in Austin who are active online"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+          </div>
+          <FilterGrid filterDefs={filterDefs} values={filterValues} onChange={setFilterValues} />
         </div>
-        <div className="field">
-          <label htmlFor="prompt">Prompt search</label>
-          <textarea
-            id="prompt"
-            rows={3}
-            required
-            placeholder="e.g. Founders of boutique fitness studios in Austin who are active online"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-        </div>
-        <FilterGrid filterDefs={filterDefs} values={filterValues} onChange={setFilterValues} />
         <div className="actions">
           <button type="submit" disabled={searching}>
             {searching ? "Searching…" : "Find leads"}
           </button>
         </div>
       </form>
-
-      {showResults && (
-        <section className="results">
-          <div className="results-head">
-            <h3>Results</h3>
-            <p className="meta">{meta}</p>
-          </div>
-          <LeadsTable leads={leads} />
-        </section>
-      )}
     </section>
   );
 }

@@ -3,9 +3,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from backend.models import AccountType, OrgRole, SearchJobStatus
+
+
+def _csv_list(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        return [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
+    if isinstance(value, list):
+        out: list[str] = []
+        for item in value:
+            out.extend(_csv_list(item))
+        return out
+    return [str(value).strip()] if str(value).strip() else []
 
 
 class UserCreate(BaseModel):
@@ -78,6 +91,7 @@ class LinkedInSessionOut(BaseModel):
 class SearchFilters(BaseModel):
     location: str = ""
     industry: str = ""
+    company: str = ""
     company_location: str = ""
     interests: list[str] = Field(default_factory=list)
     job_titles: list[str] = Field(default_factory=list)
@@ -91,6 +105,11 @@ class SearchFilters(BaseModel):
     max_results: int = Field(default=25, ge=3, le=100)
     active_only: bool = True
     business_only: bool = True
+
+    @field_validator("job_titles", "interests", mode="before")
+    @classmethod
+    def split_list_fields(cls, value: Any) -> list[str]:
+        return _csv_list(value)
 
 
 class SearchCreate(BaseModel):

@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mark — Database wiki</title>
+  <meta name="schema-fingerprint" content="af23a43756d8e02d" />
+</head>
+<body data-schema-fingerprint="af23a43756d8e02d">
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#top">Mark DB</a>
+      <p class="sidebar-sub">Schema wiki</p>
+      <label class="search-wrap" for="db-search">Search</label>
+      <input id="db-search" type="search" placeholder="Table or column…" autocomplete="off" />
+      <nav id="table-nav" aria-label="Tables"><a class="nav-item" data-table="lead_records" href="#table-lead_records"><span>lead_records</span><span class="nav-count">131</span></a><a class="nav-item" data-table="linkedin_sessions" href="#table-linkedin_sessions"><span>linkedin_sessions</span><span class="nav-count">0</span></a><a class="nav-item" data-table="organization_members" href="#table-organization_members"><span>organization_members</span><span class="nav-count">0</span></a><a class="nav-item" data-table="organizations" href="#table-organizations"><span>organizations</span><span class="nav-count">0</span></a><a class="nav-item" data-table="search_jobs" href="#table-search_jobs"><span>search_jobs</span><span class="nav-count">8</span></a><a class="nav-item" data-table="users" href="#table-users"><span>users</span><span class="nav-count">1</span></a></nav>
+      <p class="sidebar-meta">
+        sqlite · sqlite<br />
+        fingerprint af23a43756d8e02d<br />
+        2026-09-21 19:07 UTC
+      </p>
+    </aside>
+    <main id="top">
+      <header class="page-head">
+        <h1>Database wiki</h1>
+        <p class="lede">
+          Live schema from SQLAlchemy + the connected database.
+          Regenerated when tables, columns, indexes, or foreign keys change.
+        </p>
+      </header>
+      <section class="overview">
+        <h2>How tables connect</h2>
+        <ul class="er-list"><li><a href="#table-lead_records">lead_records</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li><li><a href="#table-linkedin_sessions">linkedin_sessions</a> <span class="muted">(user_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-organization_members">organization_members</a> <span class="muted">(organization_id)</span> → <a href="#table-organizations">organizations</a></li><li><a href="#table-organization_members">organization_members</a> <span class="muted">(user_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-search_jobs">search_jobs</a> <span class="muted">(owner_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-search_jobs">search_jobs</a> <span class="muted">(organization_id)</span> → <a href="#table-organizations">organizations</a></li></ul>
+      </section>
+      <article class="table-card" id="table-lead_records" data-table="lead_records">
+              <header class="table-head">
+                <h2>lead_records</h2>
+                <p class="lede">Leads found for a search. Deleted if the parent search is deleted.</p>
+                <p class="meta">131 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="lead_records id integer primary key. ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Primary key.</td>
+                </tr><tr data-search="lead_records search_job_id integer fk → search_jobs.id. cascade delete with the search. ">
+                  <td><code>search_job_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-search_jobs">search_jobs.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>FK → search_jobs.id. Cascade delete with the search.</td>
+                </tr><tr data-search="lead_records name varchar(255) person name from the linkedin serp. ">
+                  <td><code>name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Person name from the LinkedIn SERP.</td>
+                </tr><tr data-search="lead_records email varchar(255) stored email. currently often a guessed dummy. ">
+                  <td><code>email</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Stored email. Currently often a guessed dummy.</td>
+                </tr><tr data-search="lead_records phone varchar(64) phone if scraped. ">
+                  <td><code>phone</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Phone if scraped.</td>
+                </tr><tr data-search="lead_records personal_location varchar(255) person location. ">
+                  <td><code>personal_location</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Person location.</td>
+                </tr><tr data-search="lead_records ai_description text short ai / template summary. ">
+                  <td><code>ai_description</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Short AI / template summary.</td>
+                </tr><tr data-search="lead_records work_field varchar(255) industry / field. ">
+                  <td><code>work_field</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Industry / field.</td>
+                </tr><tr data-search="lead_records work_designation varchar(255) job title. ">
+                  <td><code>work_designation</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Job title.</td>
+                </tr><tr data-search="lead_records company_name varchar(255) employer name. ">
+                  <td><code>company_name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Employer name.</td>
+                </tr><tr data-search="lead_records company_location varchar(255) company location (often copied from filters). ">
+                  <td><code>company_location</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Company location (often copied from filters).</td>
+                </tr><tr data-search="lead_records linkedin_url text https://www.linkedin.com/in/… ">
+                  <td><code>linkedin_url</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>https://www.linkedin.com/in/…</td>
+                </tr><tr data-search="lead_records relevance_score float 0–1 score vs the prompt. ">
+                  <td><code>relevance_score</code></td>
+                  <td><code>FLOAT</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>0–1 score vs the prompt.</td>
+                </tr><tr data-search="lead_records activity_status varchar(64) active / likely active / indexed profile. ">
+                  <td><code>activity_status</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Active / Likely active / Indexed profile.</td>
+                </tr><tr data-search="lead_records raw_snippet text search snippet used for parsing. ">
+                  <td><code>raw_snippet</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Search snippet used for parsing.</td>
+                </tr><tr data-search="lead_records tags json json list of filter tags. ">
+                  <td><code>tags</code></td>
+                  <td><code>JSON</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>JSON list of filter tags.</td>
+                </tr><tr data-search="lead_records created_at datetime lead saved (utc). ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Lead saved (UTC).</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li><code>search_job_id</code> → <a class="ref-link" href="#table-search_jobs">search_jobs.id</a></li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li class='muted'>Nothing else points at this table.</li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_lead_records_search_job_id</code> on <code>search_job_id</code></li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-linkedin_sessions" data-table="linkedin_sessions">
+              <header class="table-head">
+                <h2>linkedin_sessions</h2>
+                <p class="lede">Stored LinkedIn cookies. Current public search does not use this.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="linkedin_sessions id integer primary key. ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Primary key.</td>
+                </tr><tr data-search="linkedin_sessions user_id integer fk → users.id ">
+                  <td><code>user_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-users">users.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>FK → users.id</td>
+                </tr><tr data-search="linkedin_sessions label varchar(255) user-facing name, e.g. primary. ">
+                  <td><code>label</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>User-facing name, e.g. Primary.</td>
+                </tr><tr data-search="linkedin_sessions encrypted_cookie text encrypted li_at cookie. unused by public search. ">
+                  <td><code>encrypted_cookie</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Encrypted li_at cookie. Unused by public search.</td>
+                </tr><tr data-search="linkedin_sessions linkedin_name varchar(255) cached linkedin display name. ">
+                  <td><code>linkedin_name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Cached LinkedIn display name.</td>
+                </tr><tr data-search="linkedin_sessions is_valid boolean last validation result. ">
+                  <td><code>is_valid</code></td>
+                  <td><code>BOOLEAN</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Last validation result.</td>
+                </tr><tr data-search="linkedin_sessions last_validated_at datetime when the cookie was last checked. ">
+                  <td><code>last_validated_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>When the cookie was last checked.</td>
+                </tr><tr data-search="linkedin_sessions created_at datetime session saved (utc). ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Session saved (UTC).</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li><code>user_id</code> → <a class="ref-link" href="#table-users">users.id</a></li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li class='muted'>Nothing else points at this table.</li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li class='muted'>No extra indexes.</li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-organization_members" data-table="organization_members">
+              <header class="table-head">
+                <h2>organization_members</h2>
+                <p class="lede">Join table: which users belong to which org, and their role.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="organization_members id integer primary key. ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Primary key.</td>
+                </tr><tr data-search="organization_members organization_id integer fk → organizations.id ">
+                  <td><code>organization_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-organizations">organizations.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>FK → organizations.id</td>
+                </tr><tr data-search="organization_members user_id integer fk → users.id ">
+                  <td><code>user_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-users">users.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>FK → users.id</td>
+                </tr><tr data-search="organization_members role varchar(6) owner, admin, or member. owner admin member">
+                  <td><code>role</code></td>
+                  <td><code>VARCHAR(6)</code><br><span class='enum'>values: owner, admin, member</span></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>owner, admin, or member.</td>
+                </tr><tr data-search="organization_members joined_at datetime when they joined (utc). ">
+                  <td><code>joined_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>When they joined (UTC).</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li><code>organization_id</code> → <a class="ref-link" href="#table-organizations">organizations.id</a></li><li><code>user_id</code> → <a class="ref-link" href="#table-users">users.id</a></li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li class='muted'>Nothing else points at this table.</li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li>unique <code>uq_org_user</code> on <code>organization_id, user_id</code></li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-organizations" data-table="organizations">
+              <header class="table-head">
+                <h2>organizations</h2>
+                <p class="lede">Team workspaces. Optional — individual accounts do not need one.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="organizations id integer primary key. ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Primary key.</td>
+                </tr><tr data-search="organizations name varchar(255) team name. unique. ">
+                  <td><code>name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-unique">unique</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Team name. Unique.</td>
+                </tr><tr data-search="organizations slug varchar(255) url-safe unique key. ">
+                  <td><code>slug</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>URL-safe unique key.</td>
+                </tr><tr data-search="organizations created_at datetime org created (utc). ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Org created (UTC).</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li class='muted'>No outgoing foreign keys.</li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li><a class="ref-link" href="#table-organization_members">organization_members</a>.<code>organization_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-search_jobs">search_jobs</a>.<code>organization_id</code> → <code>id</code></li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_organizations_slug</code> unique on <code>slug</code></li><li>unique <code></code> on <code>name</code></li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-search_jobs" data-table="search_jobs">
+              <header class="table-head">
+                <h2>search_jobs</h2>
+                <p class="lede">One saved search: prompt, filters, status, and who ran it.</p>
+                <p class="meta">8 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="search_jobs id integer primary key. returned as search_id in the api. ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Primary key. Returned as search_id in the API.</td>
+                </tr><tr data-search="search_jobs name varchar(255) user-given search name. ">
+                  <td><code>name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>User-given search name.</td>
+                </tr><tr data-search="search_jobs prompt text natural-language search prompt. ">
+                  <td><code>prompt</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Natural-language search prompt.</td>
+                </tr><tr data-search="search_jobs filters json json of filtergrid values (location, industry, …). ">
+                  <td><code>filters</code></td>
+                  <td><code>JSON</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>JSON of FilterGrid values (location, industry, …).</td>
+                </tr><tr data-search="search_jobs linkedin_url text legacy field. public search leaves this null. ">
+                  <td><code>linkedin_url</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Legacy field. Public search leaves this null.</td>
+                </tr><tr data-search="search_jobs query_used text actual duckduckgo query string. ">
+                  <td><code>query_used</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Actual DuckDuckGo query string.</td>
+                </tr><tr data-search="search_jobs mode varchar(50) live, sample, or public. ">
+                  <td><code>mode</code></td>
+                  <td><code>VARCHAR(50)</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>live, sample, or public.</td>
+                </tr><tr data-search="search_jobs status varchar(50) pending → running → completed | failed. pending running completed failed">
+                  <td><code>status</code></td>
+                  <td><code>VARCHAR(50)</code><br><span class='enum'>values: pending, running, completed, failed</span></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>pending → running → completed | failed.</td>
+                </tr><tr data-search="search_jobs message text human status / error text. ">
+                  <td><code>message</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Human status / error text.</td>
+                </tr><tr data-search="search_jobs owner_id integer fk → users.id (who ran the search). ">
+                  <td><code>owner_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-users">users.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>FK → users.id (who ran the search).</td>
+                </tr><tr data-search="search_jobs organization_id integer optional fk → organizations.id for shared searches. ">
+                  <td><code>organization_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td><a class="ref-link" href="#table-organizations">organizations.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Optional FK → organizations.id for shared searches.</td>
+                </tr><tr data-search="search_jobs created_at datetime search created (utc). ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Search created (UTC).</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li><code>owner_id</code> → <a class="ref-link" href="#table-users">users.id</a></li><li><code>organization_id</code> → <a class="ref-link" href="#table-organizations">organizations.id</a></li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li><a class="ref-link" href="#table-lead_records">lead_records</a>.<code>search_job_id</code> → <code>id</code></li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li class='muted'>No extra indexes.</li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-users" data-table="users">
+              <header class="table-head">
+                <h2>users</h2>
+                <p class="lede">People who sign in. Every search is owned by a user.</p>
+                <p class="meta">1 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="users id integer primary key. ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Primary key.</td>
+                </tr><tr data-search="users email varchar(255) login email. unique. ">
+                  <td><code>email</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Login email. Unique.</td>
+                </tr><tr data-search="users full_name varchar(255) display name in the top bar. ">
+                  <td><code>full_name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Display name in the top bar.</td>
+                </tr><tr data-search="users hashed_password varchar(255) bcrypt hash — never store plain passwords. ">
+                  <td><code>hashed_password</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>bcrypt hash — never store plain passwords.</td>
+                </tr><tr data-search="users account_type varchar(12) individual or organization. individual organization">
+                  <td><code>account_type</code></td>
+                  <td><code>VARCHAR(12)</code><br><span class='enum'>values: individual, organization</span></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>individual or organization.</td>
+                </tr><tr data-search="users is_active boolean if false, login should be rejected. ">
+                  <td><code>is_active</code></td>
+                  <td><code>BOOLEAN</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>If false, login should be rejected.</td>
+                </tr><tr data-search="users created_at datetime account created (utc). ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>Account created (UTC).</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li class='muted'>No outgoing foreign keys.</li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li><a class="ref-link" href="#table-linkedin_sessions">linkedin_sessions</a>.<code>user_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-organization_members">organization_members</a>.<code>user_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-search_jobs">search_jobs</a>.<code>owner_id</code> → <code>id</code></li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_users_email</code> unique on <code>email</code></li></ul>
+                </section>
+              </div>
+            </article>
+      <p id="no-results" class="empty hidden">No tables or columns match that search.</p>
+    </main>
+  </div>
+  <script id="dbwiki-meta" type="application/json">{"fingerprint": "af23a43756d8e02d", "tables": ["lead_records", "linkedin_sessions", "organization_members", "organizations", "search_jobs", "users"]}</script>
+  <style>
+    :root {
+      --ink: #10231f;
+      --ink-soft: #1c3a33;
+      --paper: #f4faf7;
+      --line: rgba(16, 35, 31, 0.14);
+      --accent: #e85d04;
+      --accent-deep: #c44900;
+      --good: #0f7a5a;
+      --sidebar: #0e1f1c;
+      --radius: 12px;
+      --font-display: "Fraunces", Georgia, serif;
+      --font-body: "Sora", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: linear-gradient(165deg, #dceee7, var(--paper) 45%, #eef6f2);
+    }
+    .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100dvh; }
+    .sidebar {
+      position: sticky; top: 0; height: 100dvh;
+      background: var(--sidebar); color: #e8f3ee;
+      padding: 1.25rem 1rem; overflow: auto;
+    }
+    .brand {
+      font-family: var(--font-display); font-size: 1.6rem; color: #fff;
+      text-decoration: none; font-weight: 700;
+    }
+    .sidebar-sub { margin: 0.15rem 0 1rem; color: #9cb8af; font-size: 0.85rem; }
+    .search-wrap { display: block; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: #9cb8af; margin-bottom: 0.35rem; }
+    #db-search {
+      width: 100%; padding: 0.65rem 0.75rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06); color: #fff; font: inherit; margin-bottom: 1rem;
+    }
+    #table-nav { display: grid; gap: 0.25rem; }
+    .nav-item {
+      display: flex; justify-content: space-between; gap: 0.5rem;
+      color: #d5e8e0; text-decoration: none; padding: 0.45rem 0.55rem; border-radius: 8px; font-size: 0.9rem;
+    }
+    .nav-item:hover, .nav-item.active { background: rgba(232, 93, 4, 0.25); color: #fff; }
+    .nav-count { color: #9cb8af; font-size: 0.75rem; }
+    .sidebar-meta { margin-top: 1.5rem; font-size: 0.72rem; color: #9cb8af; line-height: 1.5; }
+    main { padding: 1.5rem 1.75rem 3rem; }
+    h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.02em; }
+    h1 { margin: 0 0 0.4rem; font-size: 2.1rem; }
+    h2 { margin: 0 0 0.35rem; }
+    .lede { color: var(--ink-soft); max-width: 46rem; }
+    .meta { font-size: 0.8rem; color: var(--ink-soft); }
+    .overview, .table-card {
+      background: rgba(255,255,255,0.84); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 1.1rem 1.2rem; margin: 1rem 0 1.25rem;
+    }
+    .er-list, .ref-grid ul { margin: 0.4rem 0 0; padding-left: 1.15rem; }
+    .table-wrap { overflow-x: auto; margin: 0.75rem 0 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; vertical-align: top; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); }
+    th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); background: #e8f3ee; }
+    code { font-size: 0.84em; }
+    .muted { color: var(--ink-soft); }
+    .ref-link { color: var(--accent-deep); }
+    .badge {
+      display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
+      text-transform: uppercase; padding: 0.12rem 0.4rem; border-radius: 999px; margin: 0.1rem 0.15rem 0.1rem 0;
+    }
+    .badge-pk { background: #10231f; color: #fff; }
+    .badge-unique { background: #c44900; color: #fff; }
+    .badge-idx { background: #dceee7; color: var(--good); }
+    .badge-req { background: #fde8d8; color: var(--accent-deep); }
+    .badge-null { background: #eef2f1; color: var(--ink-soft); }
+    .enum { font-size: 0.75rem; color: var(--ink-soft); }
+    .ref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+    .empty { padding: 1rem; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; color: var(--ink-soft); }
+    .hidden { display: none; }
+    tr.col-hit td { background: rgba(232, 93, 4, 0.08); }
+    @media (max-width: 840px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { position: relative; height: auto; }
+    }
+  </style>
+  <script>
+    const search = document.getElementById("db-search");
+    const cards = [...document.querySelectorAll(".table-card")];
+    const nav = [...document.querySelectorAll(".nav-item")];
+    const empty = document.getElementById("no-results");
+    const overview = document.querySelector(".overview");
+
+    function filterWiki() {
+      const q = (search.value || "").trim().toLowerCase();
+      let visible = 0;
+      cards.forEach((card) => {
+        const tableName = (card.dataset.table || "").toLowerCase();
+        const tableHit = !q || tableName.includes(q);
+        const rows = [...card.querySelectorAll("tbody tr")];
+        let anyRowHit = tableHit;
+        rows.forEach((row) => {
+          const rowHit = !q || tableHit || (row.dataset.search || "").includes(q);
+          row.classList.toggle("hidden", Boolean(q && !rowHit));
+          row.classList.toggle("col-hit", Boolean(q && (row.dataset.search || "").includes(q)));
+          if (rowHit) anyRowHit = true;
+        });
+        card.classList.toggle("hidden", Boolean(q && !anyRowHit));
+        const navItem = nav.find((n) => n.dataset.table === card.dataset.table);
+        if (navItem) navItem.classList.toggle("hidden", Boolean(q && !anyRowHit));
+        if (!card.classList.contains("hidden")) visible += 1;
+      });
+      if (overview) overview.classList.toggle("hidden", Boolean(q));
+      empty.classList.toggle("hidden", visible !== 0);
+    }
+    search.addEventListener("input", filterWiki);
+  </script>
+</body>
+</html>

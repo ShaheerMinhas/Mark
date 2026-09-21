@@ -45,3 +45,9 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _normalize_search_job_statuses()
+    try:
+        from backend.services.dbwiki import refresh_dbwiki
+
+        refresh_dbwiki()
+    except Exception:
+        pass

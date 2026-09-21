@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 FILTER_DEFINITIONS = {
-    "location": {"label": "Location", "type": "text", "placeholder": "City, region, or country"},
+    "location": {
+        "label": "Location",
+        "type": "text",
+        "multi": True,
+        "placeholder": "Lahore, Karachi, Austin",
+        "hint": "Separate multiple locations with commas.",
+    },
     "industry": {
         "label": "Industry / work field",
         "type": "select",
+        "placeholder": "Technology, Healthcare",
         "options": [
             "Technology",
             "Healthcare",
@@ -23,7 +30,9 @@ FILTER_DEFINITIONS = {
     "job_titles": {
         "label": "Job titles",
         "type": "tags",
+        "placeholder": "Software Engineer, Founder, VP Sales",
         "suggestions": [
+            "Software Engineer",
             "Founder",
             "CEO",
             "CMO",
@@ -34,12 +43,25 @@ FILTER_DEFINITIONS = {
             "Head of Growth",
         ],
     },
+    "company": {
+        "label": "Company names",
+        "type": "text",
+        "multi": True,
+        "placeholder": "Xavor, Acme, Stripe",
+        "hint": "Separate multiple companies with commas.",
+    },
     "company_size": {
         "label": "Company size",
         "type": "select",
         "options": ["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"],
     },
-    "company_location": {"label": "Company location", "type": "text", "placeholder": "HQ or office location"},
+    "company_location": {
+        "label": "Company location",
+        "type": "text",
+        "multi": True,
+        "placeholder": "Lahore, San Francisco",
+        "hint": "Separate multiple locations with commas.",
+    },
     "age_min": {"label": "Audience age (min)", "type": "number", "min": 13, "max": 100, "default": 25},
     "age_max": {"label": "Audience age (max)", "type": "number", "min": 13, "max": 100, "default": 45},
     "gender": {
@@ -50,6 +72,7 @@ FILTER_DEFINITIONS = {
     "language": {
         "label": "Language",
         "type": "select",
+        "placeholder": "English, Urdu",
         "options": ["English", "Spanish", "French", "German", "Portuguese", "Hindi", "Arabic", "Chinese"],
     },
     "income_level": {
@@ -60,6 +83,7 @@ FILTER_DEFINITIONS = {
     "interests": {
         "label": "Interests",
         "type": "tags",
+        "placeholder": "SaaS, Fitness, B2B",
         "suggestions": [
             "Sustainability",
             "E-commerce",
@@ -73,6 +97,7 @@ FILTER_DEFINITIONS = {
     "seniority": {
         "label": "Seniority",
         "type": "select",
+        "placeholder": "Senior, Director",
         "options": ["Entry", "Mid", "Senior", "Director", "VP", "C-Level", "Owner"],
     },
     "active_only": {"label": "Active LinkedIn users only", "type": "boolean", "default": True},
