@@ -25,6 +25,12 @@ TABLE_DOCS: dict[str, str] = {
     "linkedin_sessions": "Stored LinkedIn cookies. Current public search does not use this.",
     "search_jobs": "One saved search: prompt, filters, status, and who ran it.",
     "lead_records": "Leads found for a search. Deleted if the parent search is deleted.",
+    "domain_email_patterns": "Learned {first}.{last} style patterns per company domain.",
+    "email_evidence": "Why Mark believes an email: public URL, provider, or pattern.",
+    "email_verification_events": "Each verify attempt (local or provider).",
+    "provider_usage": "Finder/verify calls for cost tracking. No hard-coded prices.",
+    "email_lookup_cache": "Recent person+company email results. Avoids repeat spend.",
+    "email_enrichment_jobs": "Background Find Emails run for a saved search.",
 }
 
 COLUMN_DOCS: dict[tuple[str, str], str] = {
@@ -67,7 +73,12 @@ COLUMN_DOCS: dict[tuple[str, str], str] = {
     ("lead_records", "id"): "Primary key.",
     ("lead_records", "search_job_id"): "FK → search_jobs.id. Cascade delete with the search.",
     ("lead_records", "name"): "Person name from the LinkedIn SERP.",
-    ("lead_records", "email"): "Stored email. Currently often a guessed dummy.",
+    ("lead_records", "email"): "Best email candidate. Empty if NOT_FOUND. Never a dummy guess.",
+    ("lead_records", "email_status"): "found | inferred | verified | unverified | not_found | verify_uncertain.",
+    ("lead_records", "email_confidence"): "high | medium | low.",
+    ("lead_records", "email_source"): "snippet, public_web, pattern, or provider name.",
+    ("lead_records", "email_pattern"): "Detected pattern such as first.last.",
+    ("lead_records", "company_domain"): "Employer website host when known.",
     ("lead_records", "phone"): "Phone if scraped.",
     ("lead_records", "personal_location"): "Person location.",
     ("lead_records", "ai_description"): "Short AI / template summary.",

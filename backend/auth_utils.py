@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt
@@ -21,13 +21,21 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     payload = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    payload.update({"exp": expire})
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    payload["exp"] = int(expire.timestamp())
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    if isinstance(token, bytes):
+        return token.decode("utf-8")
+    return token
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:
+    raw = (token or "").strip().strip('"').strip("'")
+    if raw.lower().startswith("bearer "):
+        raw = raw[7:].strip()
+    if not raw:
+        return None
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return jwt.decode(raw, SECRET_KEY, algorithms=[ALGORITHM], options={"leeway": 60})
     except JWTError:
         return None

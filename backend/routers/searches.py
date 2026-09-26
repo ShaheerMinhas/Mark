@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -8,13 +9,38 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.dependencies import get_current_user, require_org_access
 from backend.filters import FILTER_DEFINITIONS
-from backend.models import LeadRecord, SearchJob, SearchJobStatus, User
-from backend.schemas import LeadOut, SearchCreate, SearchJobOut, SearchResultOut
+from backend.models import EmailEnrichmentJob, LeadRecord, SearchJob, SearchJobStatus, User
+from backend.schemas import EmailJobOut, LeadOut, SearchCreate, SearchJobOut, SearchResultOut
+from backend.services.EmailModule.jobs import (
+    latest_email_job,
+    spawn_email_job,
+    start_email_job,
+)
 from backend.services.export_service import leads_to_csv, leads_to_xml
 from backend.services.search_presenter import ensure_search_ready, search_job_out
-from backend.services.search_service import run_search
+from backend.services.search_service import create_search_job, execute_search_job, run_search
 
 router = APIRouter(prefix="/api", tags=["searches"])
+
+
+def _email_job_out(job: EmailEnrichmentJob | None) -> EmailJobOut | None:
+    if not job:
+        return None
+    return EmailJobOut.model_validate(job)
+
+
+def _search_result(job: SearchJob, *, leads=None, message: str | None = None, db: Session | None = None) -> SearchResultOut:
+    rows = leads if leads is not None else [LeadOut.model_validate(l) for l in job.leads]
+    email_job = _email_job_out(latest_email_job(db, job.id) if db is not None else None)
+    return SearchResultOut(
+        search=search_job_out(job),
+        leads=rows,
+        query_used=job.query_used or "",
+        count=len(rows),
+        message=message if message is not None else (job.message or ""),
+        mode=job.mode,
+        email_job=email_job,
+    )
 
 
 @router.get("/filters")
@@ -23,7 +49,11 @@ def list_filters():
 
 
 @router.post("/searches", response_model=SearchResultOut)
-def create_search(body: SearchCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_search(
+    body: SearchCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if body.filters.age_min and body.filters.age_max and body.filters.age_min > body.filters.age_max:
         raise HTTPException(status_code=400, detail="age_min cannot exceed age_max")
 
@@ -31,20 +61,16 @@ def create_search(body: SearchCreate, user: User = Depends(get_current_user), db
     if org_id:
         require_org_access(db, user, org_id)
 
-    result = run_search(
-        db,
-        user=user,
-        name=body.name.strip(),
-        prompt=body.prompt.strip(),
-        filters=body.filters.model_dump(),
-        organization_id=org_id,
-        save_results=body.save_results,
-    )
-
-    job = result.get("search_job")
-    if job:
-        search_out = search_job_out(job)
-    else:
+    if not body.save_results:
+        result = run_search(
+            db,
+            user=user,
+            name=body.name.strip(),
+            prompt=body.prompt.strip(),
+            filters=body.filters.model_dump(),
+            organization_id=org_id,
+            save_results=False,
+        )
         search_out = SearchJobOut(
             id=0,
             name=body.name,
@@ -55,17 +81,36 @@ def create_search(body: SearchCreate, user: User = Depends(get_current_user), db
             mode=result["mode"],
             status=SearchJobStatus.COMPLETED,
             message=result["message"],
+            progress=100,
+            found_count=result["count"],
             lead_count=result["count"],
             created_at=__import__("datetime").datetime.utcnow(),
         )
+        return SearchResultOut(
+            search=search_out,
+            leads=result["leads"],
+            query_used=result["query_used"],
+            count=result["count"],
+            message=result["message"],
+            mode=result["mode"],
+        )
 
+    job = create_search_job(
+        db,
+        user=user,
+        name=body.name.strip(),
+        prompt=body.prompt.strip(),
+        filters=body.filters.model_dump(),
+        organization_id=org_id,
+    )
+    threading.Thread(target=execute_search_job, args=(job.id,), daemon=True).start()
     return SearchResultOut(
-        search=search_out,
-        leads=result["leads"],
-        query_used=result["query_used"],
-        count=result["count"],
-        message=result["message"],
-        mode=result["mode"],
+        search=search_job_out(job),
+        leads=[],
+        query_used=job.query_used or "",
+        count=0,
+        message=job.message or "Starting a 2-minute public search…",
+        mode=job.mode,
     )
 
 
@@ -89,6 +134,7 @@ def get_search(search_id: int, user: User = Depends(get_current_user), db: Sessi
             count=0,
             message=job.message or "Search in progress…",
             mode=job.mode,
+            email_job=_email_job_out(latest_email_job(db, job.id)),
         )
 
     if job.status == SearchJobStatus.FAILED:
@@ -99,17 +145,68 @@ def get_search(search_id: int, user: User = Depends(get_current_user), db: Sessi
             count=0,
             message=job.message or "Search failed",
             mode=job.mode,
+            email_job=_email_job_out(latest_email_job(db, job.id)),
         )
 
-    leads = [LeadOut.model_validate(l) for l in job.leads]
-    return SearchResultOut(
-        search=search_job_out(job),
-        leads=leads,
-        query_used=job.query_used or "",
-        count=len(leads),
-        message=job.message or "",
-        mode=job.mode,
+    return _search_result(job, db=db    )
+
+
+@router.post("/searches/{search_id}/emails", response_model=SearchResultOut)
+def start_search_emails(
+    search_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(SearchJob).filter(SearchJob.id == search_id, SearchJob.owner_id == user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Search not found")
+    try:
+        ensure_search_ready(job)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    current = latest_email_job(db, search_id)
+    if current and current.status == "running":
+        return _search_result(job, db=db, message=current.message or "Email search already running")
+
+    leads = db.query(LeadRecord).filter(LeadRecord.search_job_id == search_id).all()
+    if not leads:
+        raise HTTPException(status_code=400, detail="No leads to enrich")
+    email_job = start_email_job(db, search_id, len(leads))
+    spawn_email_job(email_job.id, [lead.id for lead in leads], use_providers=True)
+    return _search_result(job, db=db, message="Finding emails in the background…")
+
+
+@router.get("/searches/{search_id}/emails", response_model=SearchResultOut)
+def get_search_emails(
+    search_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(SearchJob).filter(SearchJob.id == search_id, SearchJob.owner_id == user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Search not found")
+    return _search_result(job, db=db)
+
+
+@router.post("/leads/{lead_id}/email", response_model=LeadOut)
+def enrich_one_lead(
+    lead_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    lead = (
+        db.query(LeadRecord)
+        .join(SearchJob)
+        .filter(LeadRecord.id == lead_id, SearchJob.owner_id == user.id)
+        .first()
     )
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    from backend.services.EmailModule.jobs import enrich_lead_record
+
+    enrich_lead_record(db, lead, use_providers=True, use_public_web=False)
+    return LeadOut.model_validate(lead)
 
 
 @router.get("/searches/{search_id}/export")
@@ -133,6 +230,9 @@ def export_search(
         {
             "name": l.name,
             "email": l.email,
+            "email_status": l.email_status,
+            "email_confidence": l.email_confidence,
+            "email_source": l.email_source,
             "phone": l.phone,
             "personal_location": l.personal_location,
             "ai_description": l.ai_description,

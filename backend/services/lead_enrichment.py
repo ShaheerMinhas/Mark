@@ -4,6 +4,9 @@ import re
 from typing import Any
 
 from backend.config import OPENAI_API_KEY
+from backend.services.CompanyModule.extract import extract_profile_geo
+from backend.services.CompanyModule.finder import is_usable_company
+from backend.services.EmailModule.extract import extract_first_email
 
 _GENERIC_COMPANIES = {
     "",
@@ -37,9 +40,6 @@ _KNOWN_INDUSTRIES = {
     "professional services",
 }
 
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-_FAKE_EMAIL_DOMAINS = {"example.com", "email.com", "test.com"}
-
 
 def _extract_phone(text: str) -> str | None:
     if not text:
@@ -55,59 +55,34 @@ def _extract_phone(text: str) -> str | None:
     return None
 
 
-def _extract_email(text: str) -> str | None:
-    if not text:
-        return None
-    for match in _EMAIL_RE.finditer(text):
-        email = match.group(0).lower()
-        domain = email.rsplit("@", 1)[-1]
-        if domain in _FAKE_EMAIL_DOMAINS:
-            continue
-        if email.endswith(".png") or email.endswith(".jpg"):
-            continue
-        return match.group(0)
-    return None
-
-
 def _clean_company_name(raw: str | None) -> str:
     """Keep real employer names; drop generic placeholders. Do not invent values."""
     if not raw:
         return ""
     company = re.sub(r"\s+", " ", str(raw)).strip(" ·|-–,;:()[]{}\"'")
     company = re.sub(r"\s*\|\s*LinkedIn.*$", "", company, flags=re.I).strip()
-    masked = _EMAIL_RE.sub(" ", company)
+    masked = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", " ", company)
     if re.search(r"\s+at\s+|\s+@", masked, re.I):
         company = re.split(r"\s+at\s+|\s+@\s*|\s+@", masked, maxsplit=1, flags=re.I)[-1].strip()
     if " · " in company:
         company = company.split(" · ", 1)[0].strip()
-    if _EMAIL_RE.fullmatch(company):
+    if re.fullmatch(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", company):
         return ""
     if company.lower() in _GENERIC_COMPANIES:
         return ""
-    if len(company) < 2 or len(company) > 80:
+    if not is_usable_company(company):
+        return ""
+    if len(company) < 3 or len(company) > 80:
         return ""
     if re.search(r"\b(Area|Region|Metropolitan|Remote|Worldwide|Wikipedia|LinkedIn)\b", company, re.I):
         return ""
-    if "," in company and len(company) < 60:
+    if "," in company and len(company) < 60 and not re.search(r"\b(Inc\.?|LLC|Ltd\.?|Corp\.?)\b", company, re.I):
         return ""
     return company
 
 
 def _extract_personal_location(snippet: str) -> str:
-    if not snippet:
-        return ""
-    patterns = [
-        r"(?i)Location:\s*([^·|\n]{2,50})",
-        r"(?i)Based in\s+([A-Za-z .'-]{3,50})",
-    ]
-    for pat in patterns:
-        match = re.search(pat, snippet)
-        if match:
-            loc = match.group(1).strip(" .")
-            loc = re.split(r"\s{2,}|\s+·", loc)[0].strip()
-            if 2 < len(loc) < 60:
-                return loc
-    return ""
+    return extract_profile_geo(snippet)
 
 
 def _generate_ai_description(
@@ -183,7 +158,7 @@ def to_full_lead(raw: dict[str, Any], *, prompt: str, filters: dict[str, Any]) -
     else:
         field = ""
 
-    email = raw.get("email") or _extract_email(snippet)
+    email = raw.get("email") or extract_first_email(snippet, name=name if name != "Unknown" else "")
     phone = raw.get("phone") or _extract_phone(snippet)
     personal_loc = raw.get("personal_location") or _extract_personal_location(snippet)
     if not personal_loc:

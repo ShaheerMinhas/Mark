@@ -5,16 +5,20 @@ from backend.schemas import SearchJobOut
 
 
 def search_job_out(job: SearchJob) -> SearchJobOut:
+    filters = dict(job.filters or {})
+    live_found = int(filters.pop("_found", 0) or 0)
     return SearchJobOut(
         id=job.id,
         name=job.name,
         prompt=job.prompt,
-        filters=job.filters or {},
+        filters=filters,
         linkedin_url=job.linkedin_url,
         query_used=job.query_used,
         mode=job.mode,
         status=job.status,
         message=job.message,
+        progress=int(getattr(job, "progress", 0) or 0),
+        found_count=len(job.leads) if job.leads else live_found,
         lead_count=len(job.leads),
         created_at=job.created_at,
     )

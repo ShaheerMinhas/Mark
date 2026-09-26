@@ -3,10 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
+from backend.database import SessionLocal
 from backend.lead_finder import search_leads
 from backend.models import LeadRecord, SearchJob, SearchJobStatus, User
 from backend.services.lead_enrichment import to_full_lead
+from backend.services.pipeline import enrich_leads
+
+_ENRICH_SECONDS = 20.0
 
 
 def _set_status(db: Session, job: SearchJob, status: SearchJobStatus, message: str | None = None) -> None:
@@ -17,7 +22,17 @@ def _set_status(db: Session, job: SearchJob, status: SearchJobStatus, message: s
     db.refresh(job)
 
 
-def run_search(
+def _set_progress(db: Session, job: SearchJob, pct: int, stage: str, found: int = 0) -> None:
+    job.progress = max(0, min(99, int(pct)))
+    job.message = f"{stage} · {found} people so far" if found else stage
+    filters = dict(job.filters or {})
+    filters["_found"] = int(found)
+    job.filters = filters
+    flag_modified(job, "filters")
+    db.commit()
+
+
+def create_search_job(
     db: Session,
     *,
     user: User,
@@ -25,28 +40,89 @@ def run_search(
     prompt: str,
     filters: dict[str, Any],
     organization_id: int | None,
-    save_results: bool,
+) -> SearchJob:
+    job = SearchJob(
+        name=name,
+        prompt=prompt,
+        filters=filters,
+        linkedin_url=None,
+        status=SearchJobStatus.RUNNING,
+        progress=1,
+        message="Starting a 2-minute public search…",
+        owner_id=user.id,
+        organization_id=organization_id,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def execute_search_job(job_id: int) -> None:
+    db = SessionLocal()
+    try:
+        job = db.get(SearchJob, job_id)
+        if not job:
+            return
+        user = db.get(User, job.owner_id)
+        if not user:
+            _set_status(db, job, SearchJobStatus.FAILED, "Search owner was not found.")
+            return
+        run_search(db, user=user, job=job)
+    except Exception as exc:
+        try:
+            job = db.get(SearchJob, job_id)
+            if job:
+                job.progress = 100
+                _set_status(db, job, SearchJobStatus.FAILED, str(exc))
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def run_search(
+    db: Session,
+    *,
+    user: User,
+    name: str = "",
+    prompt: str = "",
+    filters: dict[str, Any] | None = None,
+    organization_id: int | None = None,
+    save_results: bool = True,
+    job: SearchJob | None = None,
 ) -> dict[str, Any]:
     """Public web search only — no LinkedIn login or session required."""
-    f = filters
-    search_job: SearchJob | None = None
+    search_job = job
+    if search_job is None:
+        f = filters or {}
+        prompt = prompt or ""
+        if save_results:
+            search_job = create_search_job(
+                db,
+                user=user,
+                name=name,
+                prompt=prompt,
+                filters=f,
+                organization_id=organization_id,
+            )
+        else:
+            f = f
+    else:
+        f = dict(search_job.filters or {})
+        prompt = search_job.prompt
+        name = search_job.name
 
-    if save_results:
-        search_job = SearchJob(
-            name=name,
-            prompt=prompt,
-            filters=f,
-            linkedin_url=None,
-            status=SearchJobStatus.PENDING,
-            owner_id=user.id,
-            organization_id=organization_id,
-        )
-        db.add(search_job)
-        db.commit()
-        db.refresh(search_job)
-        _set_status(db, search_job, SearchJobStatus.RUNNING)
+    def on_people_progress(pct: int, stage: str, found: int) -> None:
+        if search_job:
+            _set_progress(db, search_job, pct, stage, found)
 
     try:
+        if search_job:
+            _set_status(db, search_job, SearchJobStatus.RUNNING, "Starting a 2-minute public search…")
+            search_job.progress = 4
+            db.commit()
+
         result = search_leads(
             prompt,
             location=str(f.get("location") or ""),
@@ -60,9 +136,10 @@ def run_search(
             age_min=f.get("age_min"),
             age_max=f.get("age_max"),
             language=str(f.get("language") or ""),
-            max_results=int(f.get("max_results") or 25),
+            max_results=int(f.get("max_results") or 100),
             active_only=bool(f.get("active_only", True)),
             business_only=bool(f.get("business_only", True)),
+            on_progress=on_people_progress,
         )
 
         raw_leads = result.get("leads") or []
@@ -70,12 +147,38 @@ def run_search(
         message = result.get("message") or ""
         query_used = result.get("query_used") or ""
 
-        enriched = [to_full_lead(r, prompt=prompt, filters=f) for r in raw_leads]
+        enriched: list[dict[str, Any]] = []
+        if raw_leads:
+            if search_job:
+                _set_progress(db, search_job, 90, "Reading locations from profiles", len(raw_leads))
+            enriched = [to_full_lead(r, prompt=prompt, filters=f) for r in raw_leads]
+
+            def on_enrich_progress(pct: int, stage: str, found: int) -> None:
+                if search_job:
+                    _set_progress(db, search_job, pct, stage, found)
+
+            enriched, extras = enrich_leads(
+                enriched,
+                budget_seconds=_ENRICH_SECONDS,
+                on_progress=on_enrich_progress,
+                found=len(raw_leads),
+            )
+            bits = [
+                f"{extras.get('people_locations', 0)} people location(s)",
+                f"{extras.get('locations', 0)} company location(s)",
+                f"{extras.get('emails', 0)} public email(s)",
+            ]
+            message = f"{message} Enriched with {', '.join(bits)}."
 
         if search_job:
             search_job.query_used = query_used
             search_job.mode = mode
             search_job.message = message
+            search_job.progress = 100
+            filters_clean = dict(search_job.filters or {})
+            filters_clean.pop("_found", None)
+            search_job.filters = filters_clean
+            flag_modified(search_job, "filters")
 
             for lead in enriched:
                 db.add(
@@ -95,13 +198,22 @@ def run_search(
                         activity_status=lead.get("activity_status"),
                         raw_snippet=lead.get("raw_snippet"),
                         tags=lead.get("tags") or [],
+                        company_domain=lead.get("company_domain"),
+                        email_status=lead.get("email_status"),
+                        email_confidence=lead.get("email_confidence"),
+                        email_source=lead.get("email_source"),
+                        email_pattern=lead.get("email_pattern"),
+                        email_source_url=lead.get("email_source_url"),
+                        email_evidence=lead.get("email_evidence"),
+                        email_verification=lead.get("email_verification"),
                     )
                 )
 
             _set_status(db, search_job, SearchJobStatus.COMPLETED, message)
             db.refresh(search_job)
             for i, rec in enumerate(search_job.leads):
-                enriched[i]["id"] = rec.id
+                if i < len(enriched):
+                    enriched[i]["id"] = rec.id
 
         return {
             "search_id": search_job.id if search_job else None,
@@ -115,5 +227,6 @@ def run_search(
         }
     except Exception as exc:
         if search_job:
+            search_job.progress = 100
             _set_status(db, search_job, SearchJobStatus.FAILED, str(exc))
         raise

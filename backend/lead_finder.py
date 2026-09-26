@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import hashlib
+import difflib
 import re
+import time
+from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
-try:
-    from ddgs import DDGS
-except ImportError:  # pragma: no cover
-    from duckduckgo_search import DDGS  # type: ignore
+from backend.services.CompanyModule.extract import extract_profile_geo
+from backend.services.CompanyModule.finder import is_usable_company
+from backend.services.ddg import ddg_session, ddg_text
 
 
 INDUSTRIES = [
@@ -96,6 +97,14 @@ _GENERIC_COMPANIES = {
     "her",
     "our",
     "my",
+    "solar",
+    "energy",
+    "chief",
+    "brand",
+    "battery",
+    "host",
+    "host of",
+    "officer",
 }
 
 # Common false positives after the word "at"
@@ -103,6 +112,7 @@ _AT_STOPWORDS = {
     "the", "a", "an", "his", "her", "their", "our", "my", "linkedin", "least",
     "home", "work", "scale", "ease", "heart", "hand", "night", "university",
     "college", "school", "least", "present", "this", "that", "which",
+    "host", "chief", "at",
 }
 
 _ROLE_WORDS = {
@@ -132,23 +142,38 @@ _ROLE_WORDS = {
     "intern",
     "student",
     "professional",
+    "marketing",
+    "marketer",
+    "cgo",
+    "chair",
 }
 
 # High-confidence job titles used before "at <Company>"
 _JOB_TITLE_RE = (
-    r"(?:Co-?Founder|Founder|CEO|CTO|CMO|CFO|COO|Owner|President|Director|"
+    r"(?:Co-?Founder|Founder|Co-?Owner|CEO|CTO|CMO|CFO|COO|CGO|Owner|President|Director|"
     r"Managing Director|General Manager|"
     r"(?:Principal |Principle |Senior |Staff |Lead |Junior )?"
     r"(?:Software |Data |Platform |DevOps |IT |Enterprise )?"
     r"(?:Engineer|Developer|Designer|Consultant|Analyst|Architect|Specialist|Manager)|"
-    r"Marketing Manager|Brand Manager|Product Manager|Sales Manager|Project Manager|"
+    r"Marketing Manager|Marketing Director|Brand Manager|Product Manager|Sales Manager|Project Manager|"
+    r"Head of Marketing|Head of Growth|Head of Communications|"
+    r"Marketer|Solar Marketer|"
     r"Growth Lead|Head of [A-Za-z& ]{2,30}|"
     r"VP(?:[\s\-–]+(?:of\s+)?[A-Za-z][\w&.''\-]*(?:\s+[A-Za-z][\w&.''\-]*){0,6})?|"
     r"Vice President(?:\s+of)?(?:\s+[A-Za-z&][A-Za-z& ]{1,30})?|"
-    r"Partner|Principal|Lead)"
+    r"Board Chair|Partner|Principal|Lead)"
 )
 
 _KNOWN_INDUSTRIES = {item.lower() for item in INDUSTRIES}
+
+_US_STATE_ABBR = frozenset(
+    {
+        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+        "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+        "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+        "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC",
+    }
+)
 
 _SERP_JUNK = re.compile(
     r"(?i)(?:wikipedia|yahoo|sign in|log\s?in|facebook|meta for business|"
@@ -218,6 +243,8 @@ def _looks_like_location(text: str) -> bool:
     t = (text or "").strip()
     if not t:
         return False
+    if re.search(r"\b(Inc\.?|LLC|Ltd\.?|Corp\.?|Corporation|Company)\b", t, re.I):
+        return False
     if re.search(
         r"\b(Area|Region|Metropolitan|Metro|Greater|County|Province|District|"
         r"United States|USA|U\.S\.|UK|Remote|Worldwide|Global)\b",
@@ -227,6 +254,8 @@ def _looks_like_location(text: str) -> bool:
         return True
     # "Austin, TX" / "London, United Kingdom"
     if "," in t and len(t) < 60:
+        return True
+    if t.upper() in _US_STATE_ABBR:
         return True
     return False
 
@@ -313,10 +342,13 @@ def _clean_person_name(raw: str) -> str:
         return ""
     name = match.group(1).strip()
     lowered = name.lower()
+    if len(name.split()) < 2:
+        return ""
     if re.search(r"linkedin|wikipedia|yahoo|http|profile|followers|connections", lowered):
         return ""
     if re.search(
-        r"(?i)\b(engineer|manager|director|founder|consultant|president|software|intern|student)\b",
+        r"(?i)\b(engineer|manager|director|founder|consultant|president|software|"
+        r"intern|student|marketing|sales|\bvp\b|cmo|ceo)\b",
         name,
     ):
         return ""
@@ -337,7 +369,11 @@ def _looks_like_role(text: str) -> bool:
 
 def _clean_role(role: str) -> str:
     cleaned = re.sub(r"\s+", " ", role or "").strip(" ·|-–—,")
+    cleaned = re.sub(r"^[™©®\s\-–—]+", "", cleaned)
+    cleaned = re.sub(r"(?i)^award[- ]winning\s+", "", cleaned)
     cleaned = re.sub(r"\s*\|\s*LinkedIn.*$", "", cleaned, flags=re.I)
+    if re.search(r"(?i)award-winning", cleaned):
+        return ""
     if _SERP_JUNK.search(cleaned):
         cleaned = _SERP_JUNK.split(cleaned)[0].strip(" ·|-–—,")
     if len(cleaned) > 80:
@@ -359,6 +395,22 @@ def _split_role_at_company(text: str) -> tuple[str, str]:
     if right and (_looks_like_role(left) or (left and len(left.split()) <= 8)):
         return left, right
     return text.strip(), ""
+
+
+def _split_leading_role(rest: str) -> tuple[str, str]:
+    """Split 'CEO & Co-Founder SEG Solar, Inc. Houston' into role + remainder."""
+    if not rest:
+        return "", ""
+    match = re.match(
+        rf"(?i)^((?:{_JOB_TITLE_RE})(?:\s*&\s*(?:{_JOB_TITLE_RE}))*)\s+(.+)$",
+        rest,
+    )
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+    match = re.match(r"(?i)^(Board Chair|Chair(?:man|woman)?)\s+(.+)$", rest)
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+    return "", rest
 
 
 def _split_comma_company(text: str) -> tuple[str, str]:
@@ -388,8 +440,12 @@ def _clean_company(raw: str, *, name: str = "") -> str:
         company = company.split(" · ", 1)[0].strip()
     company = re.split(r"\s+[–—]\s+", company)[0].strip()
     company = re.split(r"\s+\|\s+", company)[0].strip()
+    company = re.sub(r"(?:,\s*)?(?:Houston|Austin|Dallas|Texas|California|Florida|USA|United States)\s*$", "", company, flags=re.I).strip(" ,")
+    company = re.sub(r"(?i)^(?:at|@)\s+", "", company).strip()
     if "..." in company:
         company = company.split("...")[0].strip()
+    company = re.sub(r"\s*\([^)]*\)\s*$", "", company).strip()
+    company = re.sub(r"\s*\([^)]*$", "", company).strip()
 
     if _EMAIL_IN_TEXT.fullmatch(company):
         return ""
@@ -397,7 +453,7 @@ def _clean_company(raw: str, *, name: str = "") -> str:
         return ""
     if _looks_like_location(company):
         return ""
-    if len(company) < 2 or len(company) > 80:
+    if len(company) < 3 or len(company) > 80:
         return ""
     lower = company.lower()
     if lower in _GENERIC_COMPANIES:
@@ -407,10 +463,20 @@ def _clean_company(raw: str, *, name: str = "") -> str:
     first = re.split(r"\s+", lower)[0]
     if first in _AT_STOPWORDS:
         return ""
+    if re.search(
+        r"(?i)^(award-winning|building|helping|passionate|leading|experienced|"
+        r"currently|responsible|board chair|host of|accelerating)\b",
+        company,
+    ):
+        return ""
     words = re.findall(r"[a-z0-9]+", lower)
     if words and all(w in _ROLE_WORDS for w in words):
         return ""
     if re.search(r"\b(who|which|where|that|with|from|about|looking|based)\b", lower):
+        return ""
+    if _FOREIGN_ONLY.search(company):
+        return ""
+    if not is_usable_company(company):
         return ""
     return company
 
@@ -433,8 +499,10 @@ def _company_from_snippet(body: str, *, name: str = "") -> str:
     if not body:
         return ""
     patterns = [
+        r"(?i)Experience:\s*([^·|\n]{2,60})",
         rf"(?i)Experience[:\s]+{_JOB_TITLE_RE}\s+(?:at|@)\s*([^·|\n]+)",
         rf"(?i)\b{_JOB_TITLE_RE}\s+(?:at|@)\s*([^·|\n]+)",
+        r"^([A-Z][^·|\n]{2,50}(?:,?\s+(?:LLC|Inc\.?|Ltd\.?|Corp\.?)))\b",
         r"([A-Z][\w&.''\-]*(?:\s+(?:&|and|[A-Z][\w&.''\-]*)){0,4})\s*[·|]\s*(?:Full-?time|Part-?time|Contract)\b",
     ]
     for pat in patterns:
@@ -464,12 +532,7 @@ def _role_from_snippet(body: str) -> str:
 
 
 def _location_from_snippet(body: str) -> str:
-    match = re.search(r"(?i)Location:\s*([^·|\n]{2,50})", body or "")
-    if not match:
-        return ""
-    loc = match.group(1).strip(" .")
-    loc = re.split(r"\s{2,}", loc)[0].strip()
-    return loc if 2 < len(loc) < 60 else ""
+    return extract_profile_geo(body or "")
 
 
 def _parse_linkedin_title(title: str, body: str = "") -> tuple[str, str, str]:
@@ -488,7 +551,13 @@ def _parse_linkedin_title(title: str, body: str = "") -> tuple[str, str, str]:
         return "", "", ""
 
     rest = cleaned[len(name):].strip(" ·|-–—,")
+    rest = re.sub(r"(?i)^(she/her|he/him|they/them)\s*[-–|]\s*", "", rest)
     role, company = "", ""
+    dash_parts = [part.strip() for part in re.split(r"\s+-\s+", rest) if part.strip()] if rest else []
+    if len(dash_parts) >= 2 and _looks_like_role(dash_parts[0]):
+        role = dash_parts[0]
+        company = _clean_company(dash_parts[1], name=name) if not _looks_like_location(dash_parts[1]) else ""
+        rest = ""
     segs = [part.strip() for part in re.split(r"\s*[|·]\s*", rest) if part.strip()] if rest else []
     if len(segs) >= 2:
         head, tail = segs[0], segs[1]
@@ -506,36 +575,236 @@ def _parse_linkedin_title(title: str, body: str = "") -> tuple[str, str, str]:
         if right:
             role, company = left, right
         else:
+            peeled_role, peeled_rest = _split_leading_role(rest)
+            if peeled_role:
+                role = peeled_role
+                rest = peeled_rest
             left, right = _split_comma_company(rest)
             if right:
-                role, company = left, right
-            elif _looks_like_role(rest):
-                role = rest
+                role, company = (role or left), right
             else:
                 maybe_company = _clean_company(rest, name=name)
                 if maybe_company:
                     company = maybe_company
-                else:
+                elif not role and _looks_like_role(rest):
                     role = rest
 
     role = _clean_role(role)
     company = _clean_company(company, name=name)
+    if role and not company:
+        peeled_role, peeled_rest = _split_leading_role(role)
+        if peeled_role and peeled_rest:
+            maybe = _clean_company(peeled_rest, name=name)
+            if maybe:
+                role, company = peeled_role, maybe
+    if role and re.search(r"\s+(?:at|@)\s+", role, re.I):
+        left, right = _split_role_at_company(role)
+        if right:
+            maybe = _clean_company(right, name=name)
+            if maybe:
+                role, company = _clean_role(left), maybe
     if not company and body:
         company = _company_from_snippet(body, name=name)
     if not role and body:
         role = _role_from_snippet(body)
-    return name, role, company
+    return name, _clean_role(role), _clean_company(company, name=name)
+
+
+_MARKETING_CUE = re.compile(
+    r"(?i)\b(marketing|marketer|marketers|cmo|cgo|brand manager|demand[- ]gen|"
+    r"growth marketing|content marketing|digital marketing|product marketing|"
+    r"communications|public relations|go-to-market)\b"
+)
+_US_CUE = re.compile(
+    r"(?i)\b(usa|u\.s\.a?\.?|united states|america|north america|"
+    r"alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|"
+    r"florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|"
+    r"louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|"
+    r"missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|"
+    r"new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|"
+    r"rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|"
+    r"virginia|washington|west virginia|wisconsin|wyoming|"
+    r"houston|austin|dallas|chicago|boston|seattle|denver|phoenix|atlanta|"
+    r"miami|jacksonville|tampa|orlando|nashville|charlotte|raleigh|portland|"
+    r"minneapolis|detroit|philadelphia|baltimore|pittsburgh|columbus|"
+    r"indianapolis|milwaukee|sacramento|san francisco|los angeles|san diego|"
+    r"san jose|las vegas|salt lake|kansas city|st\.? louis|brooklyn|manhattan|"
+    r"queens|long island|orange county|silicon valley|bay area|metro area|"
+    r"greater [a-z]+|new york city|\bnyc\b|washington dc|d\.c\.|"
+    r"hoffman estates)\b"
+)
+_FOREIGN_ONLY = re.compile(
+    r"(?i)\b(canada|lahore|karachi|india|pakistan|united kingdom|\buk\b|"
+    r"germany|australia|china|singapore|dubai|nigeria|brasil|brazil|mexico|"
+    r"spain|argentina|chile|poland|kenya|ghana|pty ltd|\bgmbh\b|"
+    r"executivo com|gerente de marketing|gestión|berufserfahrung|"
+    r"srne nigeria|australian-owned)\b"
+)
+_TITLE_ALIASES = {
+    "marketting": "Marketing",
+    "markting": "Marketing",
+    "marketing": "Marketing",
+    "marketer": "Marketer",
+    "cmo": "CMO",
+    "cgo": "CGO",
+    "head of marketing": "Head of Marketing",
+    "marketing manager": "Marketing Manager",
+    "marketing director": "Marketing Director",
+    "marketing agent": "Marketing Manager",
+    "marketing agents": "Marketing Manager",
+}
+_MARKETING_TITLES = [
+    "CMO",
+    "Head of Marketing",
+    "Marketing Manager",
+    "Marketing Director",
+    "Brand Manager",
+    "Growth Lead",
+]
+
+
+def _wants_marketing(prompt: str, job_titles: list[str]) -> bool:
+    blob = f"{prompt} {' '.join(job_titles)}".lower()
+    return bool(_MARKETING_CUE.search(blob) or re.search(r"\bmarket", blob))
+
+
+def _wants_usa(location: str, prompt: str) -> bool:
+    blob = f"{location} {prompt}".lower()
+    return bool(re.search(r"united states|\busa\b|u\.s\.a?\.?|\bamerica\b", blob))
+
+
+def _canonical_job_titles(job_titles: list[str], prompt: str = "") -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(title: str) -> None:
+        key = title.lower().strip()
+        if not key or key in seen:
+            return
+        seen.add(key)
+        out.append(title)
+
+    known_keys = list(_TITLE_ALIASES.keys())
+    for raw in job_titles:
+        key = raw.lower().strip()
+        if key in _TITLE_ALIASES:
+            add(_TITLE_ALIASES[key])
+            continue
+        close = difflib.get_close_matches(key, known_keys, n=1, cutoff=0.78)
+        if close:
+            add(_TITLE_ALIASES[close[0]])
+            continue
+        add(raw)
+    if _wants_marketing(prompt, job_titles):
+        for title in _MARKETING_TITLES:
+            add(title)
+    return out
+
+
+def _sector_terms(prompt: str, industry: str, company: str) -> list[str]:
+    terms = [item for item in _as_list(industry) + _as_list(company) if item]
+    blob = f"{prompt} {' '.join(terms)}".lower()
+    if "solar" in blob and "solar" not in {t.lower() for t in terms}:
+        terms.append("solar")
+    return terms
+
+
+def _location_query_terms(location: str, prompt: str) -> list[str]:
+    terms = _as_list(location)
+    if _wants_usa(location, prompt):
+        return ["USA", "United States"]
+    return terms
+
+
+def _has_marketing_cue(text: str) -> bool:
+    return bool(_MARKETING_CUE.search(text or ""))
+
+
+def _has_us_cue(text: str) -> bool:
+    return bool(_US_CUE.search(text or ""))
+
+
+def _serp_title_head(title: str) -> str:
+    return re.split(r"\s*\|\s*", title or "", maxsplit=1)[0][:140]
+
+
+def _experience_line(body: str) -> str:
+    match = re.search(r"(?i)Experience:\s*([^·|\n]{2,60})", body or "")
+    return match.group(1).strip() if match else ""
+
+
+def _sector_blob(name: str, company: str, role: str, body: str) -> str:
+    blob = f"{company} {role} {_experience_line(body)}"
+    if name:
+        blob = re.sub(re.escape(name), " ", blob, flags=re.I)
+    return blob
+
+
+def _matches_sector(sectors: list[str], *, name: str, company: str, role: str, body: str) -> bool:
+    wanted = [item for item in sectors if item and item.lower() not in _KNOWN_INDUSTRIES]
+    if not wanted:
+        return True
+    hay = f"{_sector_blob(name, company, role, body)} {(body or '')[:240]}".lower()
+    return any(item.lower() in hay for item in wanted)
+
+
+def _query_job_titles(job_titles: list[str], prompt: str) -> list[str]:
+    titles = _canonical_job_titles(job_titles, prompt)
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(title: str) -> None:
+        key = title.lower().strip()
+        if not key or key in seen or key in {"marketing", "marketer"}:
+            return
+        seen.add(key)
+        out.append(title)
+
+    if _wants_marketing(prompt, job_titles) or any(t.lower() == "marketing" for t in titles):
+        for title in (
+            "Marketing Director",
+            "Marketing Manager",
+            "Head of Marketing",
+            "CMO",
+            "Director of Marketing",
+            "VP of Marketing",
+            "Brand Manager",
+            "Demand Generation Manager",
+        ):
+            add(title)
+    for title in titles:
+        add(title)
+    return out[:8]
+
+
+_GENERIC_EMPLOYER = re.compile(
+    r"(?i)\b(companies|businesses|firms|agencies|startups|organizations|people)\b"
+)
+_EMPLOYER_LOCATION = re.compile(
+    r"(?i)\b(united states|usa|u\.s\.a?\.?|\bamerica\b|in the|pakistan|india|"
+    r"united kingdom|\buk\b)\b"
+)
+
+
+def _named_employer_term(text: str) -> str:
+    """Keep 'VP at Xavor' as a required employer; drop 'at solar companies in the US'."""
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return ""
+    if _EMPLOYER_LOCATION.search(cleaned) or _GENERIC_EMPLOYER.search(cleaned):
+        return ""
+    if not is_usable_company(cleaned):
+        return ""
+    return " ".join(cleaned.split()[:3])
 
 
 def _required_terms(prompt: str, *, companies: list[str], industries: list[str]) -> list[str]:
     terms: list[str] = []
     terms.extend(companies)
-    for industry in industries:
-        if industry.lower() not in _KNOWN_INDUSTRIES:
-            terms.append(industry)
     _role, prompt_company = _split_role_at_company(prompt)
-    if prompt_company:
-        terms.append(" ".join(prompt_company.split()[:3]))
+    named = _named_employer_term(prompt_company)
+    if named:
+        terms.append(named)
     out: list[str] = []
     seen: set[str] = set()
     for term in terms:
@@ -553,18 +822,156 @@ def _hit_matches_terms(title: str, body: str, terms: list[str]) -> bool:
     return any(term.lower() in text for term in terms)
 
 
-def _hit_matches_titles(title: str, body: str, job_titles: list[str]) -> bool:
-    titles = [item for item in job_titles if item]
+def _hit_matches_titles(title: str, body: str, job_titles: list[str], *, prompt: str = "") -> bool:
+    titles = _canonical_job_titles(job_titles, prompt)
     if not titles:
         return True
-    text = f"{title} {body}".lower()
+    head = _serp_title_head(title)
+    if _wants_marketing(prompt, job_titles):
+        return (
+            _has_marketing_cue(head)
+            or _has_marketing_cue(_experience_line(body))
+            or _has_marketing_cue((body or "")[:280])
+        )
+    lowered = f"{head} {body}".lower()
     for job in titles:
-        if job.lower() in text:
+        if job.lower() in lowered:
             return True
         words = [w for w in re.findall(r"[a-z0-9]+", job.lower()) if w not in _PROMPT_STOPWORDS]
-        if words and all(word in text for word in words):
+        if words and all(word in lowered for word in words):
             return True
     return False
+
+
+def _hit_matches_location(
+    title: str,
+    body: str,
+    parsed_location: str,
+    *,
+    location: str,
+    prompt: str,
+    company: str = "",
+) -> bool:
+    if not location and not _wants_usa(location, prompt):
+        return True
+    primary = (body or "").split("...")[0][:220]
+    evidence = f"{parsed_location} {company} {_experience_line(body)} {_serp_title_head(title)} {primary}"
+    if _wants_usa(location, prompt):
+        if _FOREIGN_ONLY.search(evidence):
+            return False
+        if _has_us_cue(evidence):
+            return True
+        if re.search(r"\b(Inc\.?|LLC|Ltd\.?|Corp\.?)\b", company or ""):
+            return True
+        return False
+    wanted = [item.lower() for item in _as_list(location)]
+    hay = f"{title} {body} {parsed_location} {company}".lower()
+    return any(term in hay for term in wanted)
+
+
+_US_SEARCH_REGIONS = (
+    "California",
+    "Texas",
+    "Florida",
+    "New York",
+    "Arizona",
+    "Colorado",
+    "Illinois",
+    "Georgia",
+    "North Carolina",
+    "Pennsylvania",
+    "Massachusetts",
+    "Washington",
+    "Nevada",
+    "Ohio",
+)
+
+
+_US_SEARCH_CITIES = (
+    "Austin",
+    "Houston",
+    "Dallas",
+    "Phoenix",
+    "Denver",
+    "Miami",
+    "Atlanta",
+    "Chicago",
+    "Boston",
+    "Seattle",
+    "San Diego",
+    "Las Vegas",
+    "San Francisco",
+    "Los Angeles",
+    "Philadelphia",
+    "Charlotte",
+    "Nashville",
+    "Tampa",
+    "Portland",
+    "Minneapolis",
+    "Jacksonville",
+    "Raleigh",
+)
+
+
+def _core_queries(
+    prompt: str,
+    *,
+    location: str,
+    industry: str,
+    company: str,
+    job_titles: list[str],
+) -> list[str]:
+    titles = _query_job_titles(job_titles, prompt)
+    loc_terms = _location_query_terms(location, prompt)
+    sector0 = (_sector_terms(prompt, industry, company) or [""])[0]
+    loc_phrase = loc_terms[0] if loc_terms and not _wants_usa(location, prompt) else ""
+    queries: list[str] = []
+    for title in titles[:3]:
+        parts = ["site:linkedin.com/in", f'"{title}"']
+        if sector0:
+            parts.append(sector0)
+        if loc_phrase:
+            parts.append(f'"{loc_phrase}"')
+        queries.append(" ".join(parts))
+    for named in _as_list(company)[:8]:
+        for title in titles[:2]:
+            queries.append(f'site:linkedin.com/in "{title}" "{named}"')
+    return list(dict.fromkeys(queries))
+
+
+def _expand_queries(
+    prompt: str,
+    *,
+    location: str,
+    industry: str,
+    company: str,
+    job_titles: list[str],
+) -> list[str]:
+    titles = _query_job_titles(job_titles, prompt)
+    loc_terms = _location_query_terms(location, prompt)
+    sector0 = (_sector_terms(prompt, industry, company) or [""])[0]
+    if not titles:
+        return []
+    queries: list[str] = []
+    if _wants_usa(location, prompt):
+        for i, region in enumerate(_US_SEARCH_REGIONS):
+            title = titles[i % min(3, len(titles))]
+            bit = f"{sector0} {region}".strip()
+            queries.append(f'site:linkedin.com/in "{title}" {bit}')
+        for i, city in enumerate(_US_SEARCH_CITIES):
+            title = titles[i % min(2, len(titles))]
+            bit = f"{sector0} {city}".strip()
+            queries.append(f'site:linkedin.com/in "{title}" {bit}')
+        for title in titles[3:]:
+            bit = f"{sector0}".strip()
+            queries.append(f'site:linkedin.com/in "{title}" {bit}'.strip())
+    for extra_loc in loc_terms:
+        if extra_loc.lower() in {"usa", "united states", "us", "u.s.", "u.s.a."}:
+            continue
+        for title in titles[:2]:
+            bit = f"{sector0} {extra_loc}".strip()
+            queries.append(f'site:linkedin.com/in "{title}" {bit}')
+    return list(dict.fromkeys(queries))
 
 
 def _build_queries(
@@ -577,29 +984,64 @@ def _build_queries(
     job_titles: list[str],
     company_size: str,
 ) -> list[str]:
-    locations = _as_list(location)
-    industries = _as_list(industry)
-    companies = _as_list(company)
-    known = [item for item in industries if item.lower() in _KNOWN_INDUSTRIES]
-    extra = [item for item in industries if item.lower() not in _KNOWN_INDUSTRIES] + companies
+    return _core_queries(prompt, location=location, industry=industry, company=company, job_titles=job_titles)
 
-    loc = _or_clause(locations)
-    ind = _or_clause(known)
-    firms = _or_clause(extra)
-    jobs = _or_clause(job_titles)
-    size = f'"{company_size} employees"' if company_size else ""
-    interest = _or_clause(interests[:3])
-    brief = prompt.strip()
 
-    queries: list[str] = []
-    primary = " ".join(part for part in ["site:linkedin.com/in", brief, jobs, firms, loc, ind] if part)
-    queries.append(primary)
-    if jobs or firms:
-        queries.append(" ".join(part for part in ["site:linkedin.com/in", jobs or brief, firms, loc, ind] if part))
-    if loc and (firms or jobs):
-        queries.append(" ".join(part for part in ["site:linkedin.com/in", firms or jobs, loc, size, interest] if part))
+_MAX_SEARCH_SECONDS = 100.0
 
-    return list(dict.fromkeys(q.strip() for q in queries if q.strip()))
+
+def _query_label(query: str) -> str:
+    quoted = re.findall(r'"([^"]+)"', query or "")
+    title = quoted[0] if quoted else "marketing contacts"
+    loc = next((region for region in _US_SEARCH_REGIONS if region in (query or "")), "")
+    if "United States" in (query or ""):
+        loc = loc or "the United States"
+    if quoted and len(quoted) > 1 and quoted[1] not in {"United States"}:
+        return f"People at {quoted[1]}"
+    if loc:
+        return f"{title} in {loc}"
+    return f"Public search for {title}"
+
+
+def _linkedin_company_from_hit(title: str, url: str) -> str:
+    href = (url or "").lower()
+    if "linkedin.com/company" not in href:
+        return ""
+    text = re.sub(r"\s*\|\s*LinkedIn.*$", "", title or "", flags=re.I).strip()
+    text = re.split(r"\s+[-–—]\s+", text)[0].strip()
+    return _clean_company(text)
+
+
+def _discover_companies(sector: str, loc_phrase: str, ddgs: Any, *, limit: int = 20) -> list[str]:
+    if not sector:
+        return []
+    loc = loc_phrase or "United States"
+    queries = [
+        f'site:linkedin.com/company {sector} "{loc}"',
+        f'{sector} companies "{loc}" (Inc OR LLC)',
+    ]
+    found: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        for hit in ddg_text(query, max_results=15, ddgs=ddgs, retry=False):
+            href = (hit.get("href") or hit.get("link") or "").strip()
+            title = hit.get("title") or ""
+            body = hit.get("body") or hit.get("snippet") or ""
+            name = _linkedin_company_from_hit(title, href)
+            if not name:
+                name = _clean_company(re.split(r"\s+[-|]\s+", title)[0])
+            if not name or not is_usable_company(name):
+                continue
+            if sector.lower() not in f"{name} {title} {body}".lower():
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(name)
+            if len(found) >= limit:
+                return found
+    return found
 
 
 def _activity_status(title: str, body: str) -> tuple[str, float]:
@@ -620,18 +1062,44 @@ def _business_associated(title: str, body: str, company: str) -> bool:
     return any(cue in text for cue in _BUSINESS_CUES)
 
 
-def _stable_score(text: str, prompt: str, activity_boost: float = 0.0, business: bool = False) -> float:
-    tokens = set(re.findall(r"[a-z0-9]+", prompt.lower()))
-    hay = set(re.findall(r"[a-z0-9]+", text.lower()))
-    if not tokens:
-        base = 0.55
-    else:
-        overlap = len(tokens & hay) / max(len(tokens), 1)
-        salt = int(hashlib.md5(text.encode()).hexdigest()[:4], 16) / 65535.0
-        base = 0.35 + overlap * 0.5 + salt * 0.08
-    if business:
-        base += 0.08
-    return round(min(0.98, base + activity_boost), 2)
+def _relevance_score(
+    *,
+    prompt: str,
+    title: str,
+    body: str,
+    role: str,
+    company: str,
+    location: str,
+    job_titles: list[str],
+    wants_marketing: bool,
+    wants_us: bool,
+) -> float:
+    text = f"{title} {body} {role} {company} {location}".lower()
+    tokens = {
+        tok for tok in re.findall(r"[a-z0-9]{3,}", prompt.lower()) if tok not in _PROMPT_STOPWORDS
+    }
+    hay = set(re.findall(r"[a-z0-9]{3,}", text))
+    score = 0.28
+    if tokens:
+        score += 0.22 * (len(tokens & hay) / max(len(tokens), 1))
+    if wants_marketing and _has_marketing_cue(role):
+        score += 0.22
+    elif wants_marketing:
+        score -= 0.2
+    if is_usable_company(company):
+        score += 0.12
+    elif company:
+        score -= 0.08
+    if wants_us and (_has_us_cue(text) or _has_us_cue(location)):
+        score += 0.1
+    elif wants_us:
+        score -= 0.12
+    if "solar" in (company or "").lower():
+        score += 0.1
+    titles = _canonical_job_titles(job_titles, prompt)
+    if role and titles and any(job.lower() in role.lower() for job in titles):
+        score += 0.08
+    return round(min(0.95, max(0.2, score)), 2)
 
 
 def _age_band(age_min: int | None, age_max: int | None) -> str:
@@ -657,87 +1125,96 @@ def search_leads(
     max_results: int = 12,
     active_only: bool = True,
     business_only: bool = True,
+    on_progress: Any | None = None,
 ) -> dict[str, Any]:
     interests = _as_list(interests)
     job_titles = _as_list(job_titles)
     companies = _as_list(company)
     industries = _as_list(industry)
-    max_results = max(3, min(int(max_results or 12), 100))
+    max_results = max(10, min(int(max_results or 100), 250))
 
     if not prompt or not prompt.strip():
         return {"leads": [], "query_used": "", "count": 0, "message": "Enter a marketing prompt."}
 
-    queries = _build_queries(
-        prompt,
-        location=location,
-        industry=industry,
-        company=company,
-        interests=interests,
-        job_titles=job_titles,
-        company_size=company_size,
-    )
+    core = _core_queries(prompt, location=location, industry=industry, company=company, job_titles=job_titles)
+    extra = _expand_queries(prompt, location=location, industry=industry, company=company, job_titles=job_titles)
+    queries = core
     required = _required_terms(prompt, companies=companies, industries=industries)
-
-    raw_hits: list[dict[str, str]] = []
-    query_used = queries[0] if queries else ""
-    seen_urls: set[str] = set()
-
-    try:
-        with DDGS() as ddgs:
-            for q in queries:
-                query_used = q
-                for hit in ddgs.text(q, max_results=max_results + 8):
-                    url = (hit.get("href") or hit.get("link") or "").strip()
-                    linkedin = _normalize_linkedin_url(url)
-                    if not linkedin or linkedin in seen_urls:
-                        continue
-                    title = hit.get("title") or ""
-                    body = hit.get("body") or hit.get("snippet") or ""
-                    if not _hit_matches_terms(title, body, required):
-                        continue
-                    if not _hit_matches_titles(title, body, job_titles):
-                        continue
-                    seen_urls.add(linkedin)
-                    raw_hits.append({"title": title, "body": body, "href": linkedin})
-                    if len(raw_hits) >= max_results * 3:
-                        break
-                if len(raw_hits) >= max_results * 2:
-                    break
-    except Exception as exc:  # network / rate-limit
-        return {
-            "leads": [],
-            "query_used": query_used,
-            "count": 0,
-            "message": f"Live search failed ({exc}). Try again in a moment — no sample leads were added.",
-            "mode": "error",
-        }
+    wants_marketing = _wants_marketing(prompt, job_titles)
+    wants_us = _wants_usa(location, prompt)
+    job_titles = _canonical_job_titles(job_titles, prompt)
+    sector_terms = _sector_terms(prompt, industry, company)
+    loc_phrase = "United States" if wants_us else (_location_query_terms(location, prompt)[:1] or [""])[0]
+    query_titles = _query_job_titles(job_titles, prompt)
 
     leads: list[Lead] = []
+    query_used = queries[0] if queries else ""
+    seen_urls: set[str] = set()
+    engine_hits = 0
+    searches_run = 0
+    started = time.monotonic()
+    deadline = started + _MAX_SEARCH_SECONDS
     age_range = _age_band(age_min, age_max)
     known_industry = next((item for item in industries if item.lower() in _KNOWN_INDUSTRIES), "")
+    queued = list(dict.fromkeys([*core, *extra]))
+    query_used = queued[0] if queued else ""
 
-    for hit in raw_hits:
-        name, role, company_name = _parse_linkedin_title(hit["title"], hit["body"])
+    def report(pct: int, stage: str) -> None:
+        if on_progress:
+            on_progress(max(1, min(88, pct)), stage, len(leads))
+
+    def report_now(stage: str) -> None:
+        elapsed = time.monotonic() - started
+        pct = 6 + int(min(80, (elapsed / _MAX_SEARCH_SECONDS) * 80))
+        report(pct, stage)
+
+    report(4, "Starting a 2-minute public search")
+
+    def consider(hit: dict[str, str]) -> None:
+        url = (hit.get("href") or hit.get("link") or "").strip()
+        linkedin = _normalize_linkedin_url(url)
+        if not linkedin or linkedin in seen_urls:
+            return
+        title = hit.get("title") or ""
+        body = hit.get("body") or hit.get("snippet") or ""
+        if not _hit_matches_terms(title, body, required):
+            return
+        if not _hit_matches_titles(title, body, job_titles, prompt=prompt):
+            return
+        name, role, company_name = _parse_linkedin_title(title, body)
         if not name:
-            continue
-
-        status, boost = _activity_status(hit["title"], hit["body"])
-        associated = _business_associated(hit["title"], hit["body"], company_name)
+            return
+        if not role:
+            role = _role_from_snippet(body)
+        if wants_marketing and not (
+            _has_marketing_cue(role)
+            or _has_marketing_cue(_serp_title_head(title))
+            or _has_marketing_cue((body or "")[:280])
+        ):
+            return
+        if business_only and not is_usable_company(company_name):
+            return
+        if not _matches_sector(
+            sector_terms, name=name, company=company_name, role=role, body=body
+        ):
+            return
+        status, boost = _activity_status(title, body)
+        associated = _business_associated(title, body, company_name)
         if active_only and status == "Unknown activity":
             if not associated:
-                continue
+                return
             status = "Indexed profile"
-        if business_only and not associated:
-            continue
-
+        person_location = _location_from_snippet(body)
+        if not _hit_matches_location(
+            title, body, person_location, location=location, prompt=prompt, company=company_name
+        ):
+            return
         tags = ["LinkedIn", status]
         tags.extend(t for t in [known_industry, company_size, income_level, gender, language] if t)
         tags.extend(interests[:2])
         if associated:
             tags.append("Business-associated")
-
-        person_location = _location_from_snippet(hit["body"])
-        text_blob = f"{hit['title']} {hit['body']} {prompt}"
+        seen_urls.add(linkedin)
         leads.append(
             Lead(
                 name=name,
@@ -745,18 +1222,105 @@ def search_leads(
                 company=company_name,
                 industry=known_industry,
                 location=person_location,
-                linkedin_url=hit["href"],
-                website=hit["href"],
+                linkedin_url=linkedin,
+                website=linkedin,
                 email_guess="",
                 age_range=age_range,
-                relevance_score=_stable_score(text_blob, prompt, activity_boost=boost, business=associated),
+                relevance_score=round(min(0.96, _relevance_score(
+                    prompt=prompt,
+                    title=title,
+                    body=body,
+                    role=role,
+                    company=company_name,
+                    location=person_location,
+                    job_titles=job_titles,
+                    wants_marketing=wants_marketing,
+                    wants_us=wants_us,
+                ) + boost), 2),
                 activity_status=status,
                 business_associated=associated,
-                snippet=(hit["body"] or hit["title"])[:220],
-                source=hit["href"],
+                snippet=(body or title)[:220],
+                source=linkedin,
                 tags=[t for t in tags if t][:8],
             )
         )
+
+    work: deque[tuple[str, int, bool, int]] = deque()
+    seen_queries: set[tuple[str, int]] = set()
+    paged: set[str] = set()
+    enqueued_employers: set[str] = set()
+
+    def enqueue(q: str, *, page: int = 1, retry: bool = False, per_query: int = 12) -> None:
+        key = (q, page)
+        if not q or key in seen_queries:
+            return
+        seen_queries.add(key)
+        work.append((q, page, retry, per_query))
+
+    for i, q in enumerate(queued):
+        enqueue(q, retry=i == 0, per_query=12)
+
+    def run_query(q: str, *, page: int = 1, retry: bool = False, per_query: int = 12) -> list:
+        nonlocal searches_run, engine_hits, query_used
+        hits = ddg_text(q, max_results=per_query, page=page, retry=retry)
+        searches_run += 1
+        report_now(_query_label(q))
+        if hits:
+            engine_hits += len(hits)
+            query_used = query_used or q
+        return hits
+
+    def enqueue_employers() -> None:
+        if time.monotonic() > deadline - 12 or len(enqueued_employers) >= 10:
+            return
+        title0 = query_titles[0] if query_titles else "Marketing Manager"
+        for lead in leads:
+            name = (lead.company or "").strip()
+            key = name.lower()
+            if not name or key in enqueued_employers or not is_usable_company(name):
+                continue
+            enqueued_employers.add(key)
+            enqueue(f'site:linkedin.com/in "{title0}" "{name}"', retry=False, per_query=8)
+            if len(enqueued_employers) >= 10:
+                return
+
+    empty_streak = 0
+    while work and time.monotonic() < deadline and len(leads) < max_results:
+        q, page, retry, per_query = work.popleft()
+        hits = run_query(q, page=page, retry=retry, per_query=per_query)
+        if hits:
+            empty_streak = 0
+            if page == 1 and q not in paged and len(hits) >= 8:
+                paged.add(q)
+                enqueue(q, page=2, retry=False, per_query=10)
+        else:
+            empty_streak += 1
+            if empty_streak >= 3:
+                report_now("Search engine cooling down")
+                time.sleep(min(6.0, max(2.5, empty_streak)))
+            if empty_streak >= 10:
+                empty_streak = 4
+        before = len(leads)
+        for hit in hits:
+            consider(hit)
+            if len(leads) >= max_results:
+                break
+        if len(leads) > before:
+            enqueue_employers()
+
+    report(88, f"Found {len(leads)} people from {searches_run} searches")
+
+    if not engine_hits and not leads:
+        return {
+            "leads": [],
+            "query_used": query_used,
+            "count": 0,
+            "message": (
+                "Search engine is busy or rate-limited. Wait about 20 seconds and try again "
+                "— we did not invent sample leads."
+            ),
+            "mode": "error",
+        }
 
     leads.sort(key=lambda item: (item.activity_status == "Active", item.relevance_score), reverse=True)
     leads = leads[:max_results]
@@ -775,6 +1339,9 @@ def search_leads(
         "leads": [asdict(item) for item in leads],
         "query_used": query_used,
         "count": len(leads),
-        "message": f"Found {len(leads)} business people ({active_n} marked active) via public search — no login required.",
+        "message": (
+            f"Found {len(leads)} business people ({active_n} marked active) "
+            f"from {searches_run} public searches — no login required."
+        ),
         "mode": "live",
     }

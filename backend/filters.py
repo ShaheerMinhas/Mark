@@ -47,7 +47,7 @@ FILTER_DEFINITIONS = {
         "label": "Company names",
         "type": "text",
         "multi": True,
-        "placeholder": "Xavor, Acme, Stripe",
+        "placeholder": "e.g. First Solar, Sunrun",
         "hint": "Separate multiple companies with commas.",
     },
     "company_size": {
@@ -102,5 +102,5 @@ FILTER_DEFINITIONS = {
     },
     "active_only": {"label": "Active LinkedIn users only", "type": "boolean", "default": True},
     "business_only": {"label": "Business-associated only", "type": "boolean", "default": True},
-    "max_results": {"label": "Max results", "type": "number", "min": 3, "max": 100, "default": 25},
+    "max_results": {"label": "Max results", "type": "number", "min": 10, "max": 250, "default": 100},
 }

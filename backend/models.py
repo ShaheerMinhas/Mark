@@ -121,6 +121,7 @@ class SearchJob(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
 
     owner: Mapped[User] = relationship(back_populates="searches")
     organization: Mapped[Organization | None] = relationship(back_populates="searches")
@@ -148,5 +149,96 @@ class LeadRecord(Base):
     raw_snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    company_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    email_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    email_pattern: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    email_source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_evidence: Mapped[list | dict | None] = mapped_column(JSON, nullable=True)
+    email_verification: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    email_enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     search_job: Mapped[SearchJob] = relationship(back_populates="leads")
+
+
+class DomainEmailPattern(Base):
+    __tablename__ = "domain_email_patterns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    domain: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    pattern: Mapped[str] = mapped_column(String(64))
+    confidence: Mapped[float] = mapped_column(default=0.0)
+    sample_count: Mapped[int] = mapped_column(Integer, default=0)
+    supporting_emails: Mapped[list] = mapped_column(JSON, default=list)
+    last_observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EmailEvidence(Base):
+    __tablename__ = "email_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("lead_records.id"), nullable=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    type: Mapped[str] = mapped_column(String(64))
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EmailVerificationEvent(Base):
+    __tablename__ = "email_verification_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("lead_records.id"), nullable=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    provider: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ProviderUsage(Base):
+    __tablename__ = "provider_usage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    operation: Mapped[str] = mapped_column(String(32))
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    search_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EmailLookupCache(Base):
+    __tablename__ = "email_lookup_cache"
+    __table_args__ = (UniqueConstraint("person_key", "domain", name="uq_email_cache_person_domain"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_key: Mapped[str] = mapped_column(String(255), index=True)
+    domain: Mapped[str] = mapped_column(String(255), default="")
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EmailEnrichmentJob(Base):
+    __tablename__ = "email_enrichment_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    search_job_id: Mapped[int] = mapped_column(ForeignKey("search_jobs.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processed: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    found: Mapped[int] = mapped_column(Integer, default=0)
+    inferred: Mapped[int] = mapped_column(Integer, default=0)
+    verified: Mapped[int] = mapped_column(Integer, default=0)
+    not_found: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

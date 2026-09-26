@@ -102,7 +102,7 @@ class SearchFilters(BaseModel):
     age_min: Optional[int] = Field(default=25, ge=13, le=100)
     age_max: Optional[int] = Field(default=45, ge=13, le=100)
     language: str = ""
-    max_results: int = Field(default=25, ge=3, le=100)
+    max_results: int = Field(default=100, ge=10, le=250)
     active_only: bool = True
     business_only: bool = True
 
@@ -136,6 +136,16 @@ class LeadOut(BaseModel):
     activity_status: Optional[str] = None
     raw_snippet: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    company_domain: Optional[str] = None
+    email_status: Optional[str] = None
+    email_confidence: Optional[str] = None
+    email_source: Optional[str] = None
+    email_pattern: Optional[str] = None
+    email_source_url: Optional[str] = None
+    email_evidence: Optional[list[dict[str, Any]]] = None
+    email_verification: Optional[dict[str, Any]] = None
+    email_verified_at: Optional[datetime] = None
+    email_enriched_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -150,8 +160,26 @@ class SearchJobOut(BaseModel):
     mode: str
     status: SearchJobStatus
     message: Optional[str]
+    progress: int = 0
+    found_count: int = 0
     lead_count: int = 0
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmailJobOut(BaseModel):
+    id: int
+    search_job_id: int
+    status: str
+    progress: int = 0
+    message: Optional[str] = None
+    processed: int = 0
+    total: int = 0
+    found: int = 0
+    inferred: int = 0
+    verified: int = 0
+    not_found: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -163,3 +191,4 @@ class SearchResultOut(BaseModel):
     count: int
     message: str
     mode: str
+    email_job: Optional[EmailJobOut] = None

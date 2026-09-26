@@ -1,21 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { api, getToken, setToken } from "../api/client.js";
+import { AUTH_EXPIRED_EVENT, api, clearSession, getToken, setToken } from "../api/client.js";
 
 const USER_KEY = "mark_user";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(USER_KEY) || "null");
-    } catch {
-      return null;
-    }
-  });
-  const [loading, setLoading] = useState(!!getToken());
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const logout = useCallback(() => {
+    clearSession();
+    setUser(null);
+  }, []);
 
   useEffect(() => {
     if (!getToken()) {
+      localStorage.removeItem(USER_KEY);
       setLoading(false);
       return;
     }
@@ -25,11 +25,17 @@ export function AuthProvider({ children }) {
         localStorage.setItem(USER_KEY, JSON.stringify(u));
       })
       .catch(() => {
-        setToken(null);
-        setUser(null);
-        localStorage.removeItem(USER_KEY);
+        logout();
       })
       .finally(() => setLoading(false));
+  }, [logout]);
+
+  useEffect(() => {
+    function onExpired() {
+      setUser(null);
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
 
   const login = useCallback(async (email, password) => {
@@ -52,12 +58,6 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     return data.user;
-  }, []);
-
-  const logout = useCallback(() => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem(USER_KEY);
   }, []);
 
   return (

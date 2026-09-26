@@ -8,6 +8,9 @@ from typing import Iterable
 LEAD_COLUMNS = [
     "name",
     "email",
+    "email_status",
+    "email_confidence",
+    "email_source",
     "phone",
     "personal_location",
     "ai_description",
