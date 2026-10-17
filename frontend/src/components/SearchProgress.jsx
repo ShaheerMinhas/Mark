@@ -1,34 +1,40 @@
-import { useEffect, useState } from "react";
-
-const SEARCH_SECONDS = 120;
-const PHASES = [
-  { until: 88, label: "Find people" },
-  { until: 96, label: "Map companies" },
-  { until: 101, label: "Public emails" },
+const STAGES = [
+  { key: "discovery", label: "Discover" },
+  { key: "qualification", label: "Qualify" },
+  { key: "enrichment", label: "Enrich" },
 ];
 
-function formatClock(totalSeconds) {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+const STAGE_FOR_STATUS = {
+  pending: null,
+  discovering: "discovery",
+  filtering: "qualification",
+  enriching: "enrichment",
+};
+
+function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
-export default function SearchProgress({ progress = 0, message = "", found = 0, startedAt }) {
-  const [now, setNow] = useState(Date.now());
+/**
+ * Renders only values reported by the backend. There is no time-based estimate:
+ * a stalled search looks stalled rather than appearing to progress.
+ */
+export default function SearchProgress({ progress = 0, message = "", status, stage, counters }) {
+  const {
+    total_queries: totalQueries = 0,
+    completed_queries: completedQueries = 0,
+    failed_queries: failedQueries = 0,
+    candidates_found: candidatesFound = 0,
+    candidates_deduplicated: duplicates = 0,
+    qualified_leads: qualifiedLeads = 0,
+    emails_found: emailsFound = 0,
+    phones_found: phonesFound = 0,
+  } = counters || {};
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, []);
-
-  const elapsed = startedAt ? (now - startedAt) / 1000 : 0;
-  const remaining = Math.max(0, SEARCH_SECONDS - elapsed);
-  const overtime = elapsed > SEARCH_SECONDS;
-  const server = Math.max(0, Math.min(99, Number(progress) || 0));
-  const timed = Math.min(90, (elapsed / SEARCH_SECONDS) * 90);
-  const pct = Math.min(99, Math.max(server, timed * 0.4 + server * 0.6));
-  const phaseIndex = PHASES.findIndex((phase) => pct < phase.until);
-  const activePhase = phaseIndex < 0 ? PHASES.length - 1 : phaseIndex;
-  const foundLabel = found === 1 ? "1 person" : `${found} people`;
+  const pct = Math.max(0, Math.min(100, Number(progress) || 0));
+  const activeStage = stage || STAGE_FOR_STATUS[status] || null;
+  const activeIndex = STAGES.findIndex((item) => item.key === activeStage);
+  const queriesDone = completedQueries + failedQueries;
 
   return (
     <div
@@ -42,12 +48,20 @@ export default function SearchProgress({ progress = 0, message = "", found = 0, 
       <div className="search-progress-top">
         <div>
           <p className="search-progress-kicker">Public search</p>
-          <h3 className="search-progress-title">Taking about 2 minutes</h3>
+          <h3 className="search-progress-title">
+            {candidatesFound > 0
+              ? `${plural(candidatesFound, "candidate", "candidates")} found`
+              : "Searching public profiles…"}
+          </h3>
         </div>
-        <div className="search-progress-clock" aria-label="Time remaining">
-          <span>{overtime ? "Wrapping up" : formatClock(remaining)}</span>
-          <small>{overtime ? "finishing details" : "left"}</small>
-        </div>
+        {totalQueries > 0 ? (
+          <div className="search-progress-clock" aria-label="Queries completed">
+            <span>
+              {queriesDone}/{totalQueries}
+            </span>
+            <small>queries</small>
+          </div>
+        ) : null}
       </div>
 
       <div className="search-progress-track">
@@ -55,22 +69,42 @@ export default function SearchProgress({ progress = 0, message = "", found = 0, 
       </div>
 
       <div className="search-progress-meta">
-        <p className="search-progress-stage">{message || "Starting a 2-minute public search…"}</p>
-        <p className="search-progress-found">{foundLabel} so far</p>
+        <p className="search-progress-stage">{message || "Queued — discovery is starting…"}</p>
+        <p className="search-progress-found">
+          {qualifiedLeads > 0 ? `${plural(qualifiedLeads, "relevant lead", "relevant leads")}` : ""}
+          {emailsFound > 0 ? ` · ${emailsFound} emails` : ""}
+          {phonesFound > 0 ? ` · ${phonesFound} phones` : ""}
+        </p>
       </div>
 
       <ol className="search-progress-phases">
-        {PHASES.map((phase, index) => (
+        {STAGES.map((item, index) => (
           <li
-            key={phase.label}
+            key={item.key}
             className={
-              index < activePhase ? "is-done" : index === activePhase ? "is-active" : ""
+              activeIndex < 0
+                ? ""
+                : index < activeIndex
+                  ? "is-done"
+                  : index === activeIndex
+                    ? "is-active"
+                    : ""
             }
           >
-            {phase.label}
+            {item.label}
           </li>
         ))}
       </ol>
+
+      {duplicates > 0 || failedQueries > 0 ? (
+        <p className="search-progress-note">
+          {duplicates > 0 ? `${duplicates} duplicates removed` : ""}
+          {duplicates > 0 && failedQueries > 0 ? " · " : ""}
+          {failedQueries > 0
+            ? `${plural(failedQueries, "query", "queries")} failed — continuing with the rest`
+            : ""}
+        </p>
+      ) : null}
     </div>
   );
 }

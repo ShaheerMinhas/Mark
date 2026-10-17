@@ -4,20 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mark — Database wiki</title>
-  <meta name="schema-fingerprint" content="843de7a22d53c495" />
+  <meta name="schema-fingerprint" content="06f3823605526763" />
 </head>
-<body data-schema-fingerprint="843de7a22d53c495">
+<body data-schema-fingerprint="06f3823605526763">
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="#top">Mark DB</a>
       <p class="sidebar-sub">Schema wiki</p>
       <label class="search-wrap" for="db-search">Search</label>
       <input id="db-search" type="search" placeholder="Table or column…" autocomplete="off" />
-      <nav id="table-nav" aria-label="Tables"><a class="nav-item" data-table="domain_email_patterns" href="#table-domain_email_patterns"><span>domain_email_patterns</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_enrichment_jobs" href="#table-email_enrichment_jobs"><span>email_enrichment_jobs</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_evidence" href="#table-email_evidence"><span>email_evidence</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_lookup_cache" href="#table-email_lookup_cache"><span>email_lookup_cache</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_verification_events" href="#table-email_verification_events"><span>email_verification_events</span><span class="nav-count">0</span></a><a class="nav-item" data-table="lead_records" href="#table-lead_records"><span>lead_records</span><span class="nav-count">321</span></a><a class="nav-item" data-table="linkedin_sessions" href="#table-linkedin_sessions"><span>linkedin_sessions</span><span class="nav-count">0</span></a><a class="nav-item" data-table="organization_members" href="#table-organization_members"><span>organization_members</span><span class="nav-count">0</span></a><a class="nav-item" data-table="organizations" href="#table-organizations"><span>organizations</span><span class="nav-count">0</span></a><a class="nav-item" data-table="provider_usage" href="#table-provider_usage"><span>provider_usage</span><span class="nav-count">0</span></a><a class="nav-item" data-table="search_jobs" href="#table-search_jobs"><span>search_jobs</span><span class="nav-count">26</span></a><a class="nav-item" data-table="users" href="#table-users"><span>users</span><span class="nav-count">1</span></a></nav>
+      <nav id="table-nav" aria-label="Tables"><a class="nav-item" data-table="domain_email_patterns" href="#table-domain_email_patterns"><span>domain_email_patterns</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_enrichment_jobs" href="#table-email_enrichment_jobs"><span>email_enrichment_jobs</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_evidence" href="#table-email_evidence"><span>email_evidence</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_lookup_cache" href="#table-email_lookup_cache"><span>email_lookup_cache</span><span class="nav-count">0</span></a><a class="nav-item" data-table="email_verification_events" href="#table-email_verification_events"><span>email_verification_events</span><span class="nav-count">0</span></a><a class="nav-item" data-table="job_queue" href="#table-job_queue"><span>job_queue</span><span class="nav-count">0</span></a><a class="nav-item" data-table="lead_records" href="#table-lead_records"><span>lead_records</span><span class="nav-count">0</span></a><a class="nav-item" data-table="linkedin_sessions" href="#table-linkedin_sessions"><span>linkedin_sessions</span><span class="nav-count">0</span></a><a class="nav-item" data-table="organization_members" href="#table-organization_members"><span>organization_members</span><span class="nav-count">0</span></a><a class="nav-item" data-table="organizations" href="#table-organizations"><span>organizations</span><span class="nav-count">0</span></a><a class="nav-item" data-table="provider_usage" href="#table-provider_usage"><span>provider_usage</span><span class="nav-count">0</span></a><a class="nav-item" data-table="search_candidates" href="#table-search_candidates"><span>search_candidates</span><span class="nav-count">0</span></a><a class="nav-item" data-table="search_jobs" href="#table-search_jobs"><span>search_jobs</span><span class="nav-count">0</span></a><a class="nav-item" data-table="search_query_cache" href="#table-search_query_cache"><span>search_query_cache</span><span class="nav-count">0</span></a><a class="nav-item" data-table="search_query_runs" href="#table-search_query_runs"><span>search_query_runs</span><span class="nav-count">0</span></a><a class="nav-item" data-table="users" href="#table-users"><span>users</span><span class="nav-count">0</span></a></nav>
       <p class="sidebar-meta">
         sqlite · sqlite<br />
-        fingerprint 843de7a22d53c495<br />
-        2026-09-26 11:54 UTC
+        fingerprint 06f3823605526763<br />
+        2026-10-13 12:14 UTC
       </p>
     </aside>
     <main id="top">
@@ -30,12 +30,12 @@
       </header>
       <section class="overview">
         <h2>How tables connect</h2>
-        <ul class="er-list"><li><a href="#table-email_enrichment_jobs">email_enrichment_jobs</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li><li><a href="#table-email_evidence">email_evidence</a> <span class="muted">(lead_id)</span> → <a href="#table-lead_records">lead_records</a></li><li><a href="#table-email_verification_events">email_verification_events</a> <span class="muted">(lead_id)</span> → <a href="#table-lead_records">lead_records</a></li><li><a href="#table-lead_records">lead_records</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li><li><a href="#table-linkedin_sessions">linkedin_sessions</a> <span class="muted">(user_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-organization_members">organization_members</a> <span class="muted">(organization_id)</span> → <a href="#table-organizations">organizations</a></li><li><a href="#table-organization_members">organization_members</a> <span class="muted">(user_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-search_jobs">search_jobs</a> <span class="muted">(owner_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-search_jobs">search_jobs</a> <span class="muted">(organization_id)</span> → <a href="#table-organizations">organizations</a></li></ul>
+        <ul class="er-list"><li><a href="#table-email_enrichment_jobs">email_enrichment_jobs</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li><li><a href="#table-email_evidence">email_evidence</a> <span class="muted">(lead_id)</span> → <a href="#table-lead_records">lead_records</a></li><li><a href="#table-email_verification_events">email_verification_events</a> <span class="muted">(lead_id)</span> → <a href="#table-lead_records">lead_records</a></li><li><a href="#table-lead_records">lead_records</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li><li><a href="#table-lead_records">lead_records</a> <span class="muted">(candidate_id)</span> → <a href="#table-search_candidates">search_candidates</a></li><li><a href="#table-linkedin_sessions">linkedin_sessions</a> <span class="muted">(user_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-organization_members">organization_members</a> <span class="muted">(organization_id)</span> → <a href="#table-organizations">organizations</a></li><li><a href="#table-organization_members">organization_members</a> <span class="muted">(user_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-search_candidates">search_candidates</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li><li><a href="#table-search_jobs">search_jobs</a> <span class="muted">(owner_id)</span> → <a href="#table-users">users</a></li><li><a href="#table-search_jobs">search_jobs</a> <span class="muted">(organization_id)</span> → <a href="#table-organizations">organizations</a></li><li><a href="#table-search_query_runs">search_query_runs</a> <span class="muted">(search_job_id)</span> → <a href="#table-search_jobs">search_jobs</a></li></ul>
       </section>
       <article class="table-card" id="table-domain_email_patterns" data-table="domain_email_patterns">
               <header class="table-head">
                 <h2>domain_email_patterns</h2>
-                <p class="lede">No description yet.</p>
+                <p class="lede">Learned {first}.{last} style patterns per company domain.</p>
                 <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
@@ -72,9 +72,9 @@
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>—</td>
-                </tr><tr data-search="domain_email_patterns confidence float  ">
+                </tr><tr data-search="domain_email_patterns confidence double  ">
                   <td><code>confidence</code></td>
-                  <td><code>FLOAT</code></td>
+                  <td><code>DOUBLE</code></td>
                   <td><span class="badge badge-req">required</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
@@ -121,7 +121,7 @@
             </article><article class="table-card" id="table-email_enrichment_jobs" data-table="email_enrichment_jobs">
               <header class="table-head">
                 <h2>email_enrichment_jobs</h2>
-                <p class="lede">No description yet.</p>
+                <p class="lede">Background Find Emails run for a saved search.</p>
                 <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
@@ -249,7 +249,7 @@
             </article><article class="table-card" id="table-email_evidence" data-table="email_evidence">
               <header class="table-head">
                 <h2>email_evidence</h2>
-                <p class="lede">No description yet.</p>
+                <p class="lede">Why Mark believes an email: public URL, provider, or pattern.</p>
                 <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
@@ -342,7 +342,7 @@
             </article><article class="table-card" id="table-email_lookup_cache" data-table="email_lookup_cache">
               <header class="table-head">
                 <h2>email_lookup_cache</h2>
-                <p class="lede">No description yet.</p>
+                <p class="lede">Recent person+company email results. Avoids repeat spend.</p>
                 <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
@@ -414,7 +414,7 @@
             </article><article class="table-card" id="table-email_verification_events" data-table="email_verification_events">
               <header class="table-head">
                 <h2>email_verification_events</h2>
-                <p class="lede">No description yet.</p>
+                <p class="lede">Each verify attempt (local or provider).</p>
                 <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
@@ -497,11 +497,146 @@
                   <ul><li><code>ix_email_verification_events_email</code> on <code>email</code></li><li><code>ix_email_verification_events_lead_id</code> on <code>lead_id</code></li></ul>
                 </section>
               </div>
+            </article><article class="table-card" id="table-job_queue" data-table="job_queue">
+              <header class="table-head">
+                <h2>job_queue</h2>
+                <p class="lede">No description yet.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="job_queue id integer  ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue job_type varchar(64)  ">
+                  <td><code>job_type</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue payload json  ">
+                  <td><code>payload</code></td>
+                  <td><code>JSON</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue status varchar(32)  pending running completed failed">
+                  <td><code>status</code></td>
+                  <td><code>VARCHAR(32)</code><br><span class='enum'>values: pending, running, completed, failed</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue attempts integer  ">
+                  <td><code>attempts</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue max_attempts integer  ">
+                  <td><code>max_attempts</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue available_at datetime  ">
+                  <td><code>available_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue lease_expires_at datetime  ">
+                  <td><code>lease_expires_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue worker_id varchar(64)  ">
+                  <td><code>worker_id</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue trace_id varchar(64)  ">
+                  <td><code>trace_id</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue last_error text  ">
+                  <td><code>last_error</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue created_at datetime  ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue updated_at datetime  ">
+                  <td><code>updated_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="job_queue finished_at datetime  ">
+                  <td><code>finished_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li class='muted'>No outgoing foreign keys.</li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li class='muted'>Nothing else points at this table.</li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_job_queue_claim</code> on <code>status, available_at</code></li><li><code>ix_job_queue_type_status</code> on <code>job_type, status</code></li></ul>
+                </section>
+              </div>
             </article><article class="table-card" id="table-lead_records" data-table="lead_records">
               <header class="table-head">
                 <h2>lead_records</h2>
                 <p class="lede">Leads found for a search. Deleted if the parent search is deleted.</p>
-                <p class="meta">321 rows</p>
+                <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
                 <table>
@@ -537,13 +672,13 @@
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>Person name from the LinkedIn SERP.</td>
-                </tr><tr data-search="lead_records email varchar(255) public email when emailmodule finds one. empty if unknown — never a dummy guess. ">
+                </tr><tr data-search="lead_records email varchar(255) best email candidate. empty if not_found. never a dummy guess. ">
                   <td><code>email</code></td>
                   <td><code>VARCHAR(255)</code></td>
-                  <td><span class="badge badge-null">nullable</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
-                  <td>Public email when EmailModule finds one. Empty if unknown — never a dummy guess.</td>
+                  <td>Best email candidate. Empty if NOT_FOUND. Never a dummy guess.</td>
                 </tr><tr data-search="lead_records phone varchar(64) phone if scraped. ">
                   <td><code>phone</code></td>
                   <td><code>VARCHAR(64)</code></td>
@@ -551,6 +686,13 @@
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>Phone if scraped.</td>
+                </tr><tr data-search="lead_records phone_source varchar(64)  ">
+                  <td><code>phone_source</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
                 </tr><tr data-search="lead_records personal_location varchar(255) person location. ">
                   <td><code>personal_location</code></td>
                   <td><code>VARCHAR(255)</code></td>
@@ -582,7 +724,7 @@
                 </tr><tr data-search="lead_records company_name varchar(255) employer name. ">
                   <td><code>company_name</code></td>
                   <td><code>VARCHAR(255)</code></td>
-                  <td><span class="badge badge-null">nullable</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>Employer name.</td>
@@ -600,10 +742,10 @@
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>https://www.linkedin.com/in/…</td>
-                </tr><tr data-search="lead_records relevance_score float 0–1 score vs the prompt. ">
+                </tr><tr data-search="lead_records relevance_score double 0–1 score vs the prompt. ">
                   <td><code>relevance_score</code></td>
-                  <td><code>FLOAT</code></td>
-                  <td><span class="badge badge-req">required</span></td>
+                  <td><code>DOUBLE</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>0–1 score vs the prompt.</td>
@@ -631,45 +773,45 @@
                 </tr><tr data-search="lead_records created_at datetime lead saved (utc). ">
                   <td><code>created_at</code></td>
                   <td><code>DATETIME</code></td>
-                  <td><span class="badge badge-req">required</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>Lead saved (UTC).</td>
-                </tr><tr data-search="lead_records company_domain varchar(255)  ">
+                </tr><tr data-search="lead_records company_domain varchar(255) employer website host when known. ">
                   <td><code>company_domain</code></td>
                   <td><code>VARCHAR(255)</code></td>
                   <td><span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
-                  <td>—</td>
-                </tr><tr data-search="lead_records email_status varchar(32)  ">
+                  <td>Employer website host when known.</td>
+                </tr><tr data-search="lead_records email_status varchar(32) found | inferred | verified | unverified | not_found | verify_uncertain. ">
                   <td><code>email_status</code></td>
                   <td><code>VARCHAR(32)</code></td>
                   <td><span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
-                  <td>—</td>
-                </tr><tr data-search="lead_records email_confidence varchar(16)  ">
+                  <td>found | inferred | verified | unverified | not_found | verify_uncertain.</td>
+                </tr><tr data-search="lead_records email_confidence varchar(16) high | medium | low. ">
                   <td><code>email_confidence</code></td>
                   <td><code>VARCHAR(16)</code></td>
                   <td><span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
-                  <td>—</td>
-                </tr><tr data-search="lead_records email_source varchar(64)  ">
+                  <td>high | medium | low.</td>
+                </tr><tr data-search="lead_records email_source varchar(64) snippet, public_web, pattern, or provider name. ">
                   <td><code>email_source</code></td>
                   <td><code>VARCHAR(64)</code></td>
                   <td><span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
-                  <td>—</td>
-                </tr><tr data-search="lead_records email_pattern varchar(64)  ">
+                  <td>snippet, public_web, pattern, or provider name.</td>
+                </tr><tr data-search="lead_records email_pattern varchar(64) detected pattern such as first.last. ">
                   <td><code>email_pattern</code></td>
                   <td><code>VARCHAR(64)</code></td>
                   <td><span class="badge badge-null">nullable</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
-                  <td>—</td>
+                  <td>Detected pattern such as first.last.</td>
                 </tr><tr data-search="lead_records email_source_url text  ">
                   <td><code>email_source_url</code></td>
                   <td><code>TEXT</code></td>
@@ -705,6 +847,55 @@
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>—</td>
+                </tr><tr data-search="lead_records identity_key varchar(64)  ">
+                  <td><code>identity_key</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="lead_records linkedin_url_normalized varchar(255)  ">
+                  <td><code>linkedin_url_normalized</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="lead_records candidate_id integer  ">
+                  <td><code>candidate_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td><a class="ref-link" href="#table-search_candidates">search_candidates.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="lead_records enrichment_status varchar(32)  ">
+                  <td><code>enrichment_status</code></td>
+                  <td><code>VARCHAR(32)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="lead_records enrichment_attempts integer  ">
+                  <td><code>enrichment_attempts</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="lead_records enrichment_error varchar(255)  ">
+                  <td><code>enrichment_error</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="lead_records enrichment_locked_until datetime  ">
+                  <td><code>enrichment_locked_until</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
                 </tr>
                   </tbody>
                 </table>
@@ -712,7 +903,7 @@
               <div class="ref-grid">
                 <section>
                   <h3>This table points to</h3>
-                  <ul><li><code>search_job_id</code> → <a class="ref-link" href="#table-search_jobs">search_jobs.id</a></li></ul>
+                  <ul><li><code>search_job_id</code> → <a class="ref-link" href="#table-search_jobs">search_jobs.id</a></li><li><code>candidate_id</code> → <a class="ref-link" href="#table-search_candidates">search_candidates.id</a></li></ul>
                 </section>
                 <section>
                   <h3>Referenced by</h3>
@@ -720,7 +911,7 @@
                 </section>
                 <section>
                   <h3>Indexes &amp; unique</h3>
-                  <ul><li><code>ix_lead_records_search_job_id</code> on <code>search_job_id</code></li></ul>
+                  <ul><li><code>ix_lead_records_company</code> on <code>company_name</code></li><li><code>ix_lead_records_created</code> on <code>created_at</code></li><li><code>ix_lead_records_email</code> on <code>email</code></li><li><code>ix_lead_records_identity_key</code> on <code>identity_key</code></li><li><code>ix_lead_records_job_enrichment</code> on <code>search_job_id, enrichment_status</code></li><li><code>ix_lead_records_job_score</code> on <code>search_job_id, relevance_score</code></li><li><code>ix_lead_records_linkedin_url_normalized</code> on <code>linkedin_url_normalized</code></li><li><code>ix_lead_records_search_job_id</code> on <code>search_job_id</code></li><li><code>uq_lead_search_identity</code> unique on <code>search_job_id, identity_key</code></li></ul>
                 </section>
               </div>
             </article><article class="table-card" id="table-linkedin_sessions" data-table="linkedin_sessions">
@@ -956,7 +1147,7 @@
             </article><article class="table-card" id="table-provider_usage" data-table="provider_usage">
               <header class="table-head">
                 <h2>provider_usage</h2>
-                <p class="lede">No description yet.</p>
+                <p class="lede">Finder/verify calls for cost tracking. No hard-coded prices.</p>
                 <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
@@ -1060,11 +1251,167 @@
                   <ul><li><code>ix_provider_usage_provider</code> on <code>provider</code></li></ul>
                 </section>
               </div>
+            </article><article class="table-card" id="table-search_candidates" data-table="search_candidates">
+              <header class="table-head">
+                <h2>search_candidates</h2>
+                <p class="lede">No description yet.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="search_candidates id integer  ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates search_job_id integer  ">
+                  <td><code>search_job_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-search_jobs">search_jobs.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates identity_key varchar(64)  ">
+                  <td><code>identity_key</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates name varchar(255)  ">
+                  <td><code>name</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates title varchar(255)  ">
+                  <td><code>title</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates company varchar(255)  ">
+                  <td><code>company</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates location varchar(255)  ">
+                  <td><code>location</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates linkedin_url text  ">
+                  <td><code>linkedin_url</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates linkedin_url_normalized varchar(255)  ">
+                  <td><code>linkedin_url_normalized</code></td>
+                  <td><code>VARCHAR(255)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates source_url text  ">
+                  <td><code>source_url</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates query_text text  ">
+                  <td><code>query_text</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates raw_snippet text  ">
+                  <td><code>raw_snippet</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates status varchar(32)  pending running completed failed">
+                  <td><code>status</code></td>
+                  <td><code>VARCHAR(32)</code><br><span class='enum'>values: pending, running, completed, failed</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates relevance_score float  ">
+                  <td><code>relevance_score</code></td>
+                  <td><code>FLOAT</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates filter_match json  ">
+                  <td><code>filter_match</code></td>
+                  <td><code>JSON</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates rejection_reason varchar(64)  ">
+                  <td><code>rejection_reason</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_candidates discovered_at datetime  ">
+                  <td><code>discovered_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li><code>search_job_id</code> → <a class="ref-link" href="#table-search_jobs">search_jobs.id</a></li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li><a class="ref-link" href="#table-lead_records">lead_records</a>.<code>candidate_id</code> → <code>id</code></li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_search_candidates_job_score</code> on <code>search_job_id, relevance_score</code></li><li><code>ix_search_candidates_job_status</code> on <code>search_job_id, status</code></li><li><code>ix_search_candidates_linkedin_url_normalized</code> on <code>linkedin_url_normalized</code></li><li><code>ix_search_candidates_search_job_id</code> on <code>search_job_id</code></li><li><code>uq_candidate_search_identity</code> unique on <code>search_job_id, identity_key</code></li></ul>
+                </section>
+              </div>
             </article><article class="table-card" id="table-search_jobs" data-table="search_jobs">
               <header class="table-head">
                 <h2>search_jobs</h2>
                 <p class="lede">One saved search: prompt, filters, status, and who ran it.</p>
-                <p class="meta">26 rows</p>
+                <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
                 <table>
@@ -1145,30 +1492,149 @@
                 </tr><tr data-search="search_jobs owner_id integer fk → users.id (who ran the search). ">
                   <td><code>owner_id</code></td>
                   <td><code>INTEGER</code></td>
-                  <td><span class="badge badge-req">required</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
                   <td><a class="ref-link" href="#table-users">users.id</a></td>
                   <td class="muted"><code>—</code></td>
                   <td>FK → users.id (who ran the search).</td>
                 </tr><tr data-search="search_jobs organization_id integer optional fk → organizations.id for shared searches. ">
                   <td><code>organization_id</code></td>
                   <td><code>INTEGER</code></td>
-                  <td><span class="badge badge-null">nullable</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
                   <td><a class="ref-link" href="#table-organizations">organizations.id</a></td>
                   <td class="muted"><code>—</code></td>
                   <td>Optional FK → organizations.id for shared searches.</td>
                 </tr><tr data-search="search_jobs created_at datetime search created (utc). ">
                   <td><code>created_at</code></td>
                   <td><code>DATETIME</code></td>
-                  <td><span class="badge badge-req">required</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
                   <td>—</td>
                   <td class="muted"><code>—</code></td>
                   <td>Search created (UTC).</td>
                 </tr><tr data-search="search_jobs progress integer  ">
                   <td><code>progress</code></td>
                   <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs current_stage varchar(64)  ">
+                  <td><code>current_stage</code></td>
+                  <td><code>VARCHAR(64)</code></td>
                   <td><span class="badge badge-null">nullable</span></td>
                   <td>—</td>
-                  <td class="muted"><code>0</code></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs trace_id varchar(64)  ">
+                  <td><code>trace_id</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs started_at datetime  ">
+                  <td><code>started_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs completed_at datetime  ">
+                  <td><code>completed_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs error_message text  ">
+                  <td><code>error_message</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs cancel_requested boolean  ">
+                  <td><code>cancel_requested</code></td>
+                  <td><code>BOOLEAN</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs total_queries integer  ">
+                  <td><code>total_queries</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs completed_queries integer  ">
+                  <td><code>completed_queries</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs failed_queries integer  ">
+                  <td><code>failed_queries</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs candidates_found integer  ">
+                  <td><code>candidates_found</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs candidates_deduplicated integer  ">
+                  <td><code>candidates_deduplicated</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs qualified_leads integer  ">
+                  <td><code>qualified_leads</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs enrichment_attempted integer  ">
+                  <td><code>enrichment_attempted</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs enrichment_completed integer  ">
+                  <td><code>enrichment_completed</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs emails_found integer  ">
+                  <td><code>emails_found</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs phones_found integer  ">
+                  <td><code>phones_found</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_jobs errors_count integer  ">
+                  <td><code>errors_count</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
                   <td>—</td>
                 </tr>
                   </tbody>
@@ -1181,18 +1647,260 @@
                 </section>
                 <section>
                   <h3>Referenced by</h3>
-                  <ul><li><a class="ref-link" href="#table-email_enrichment_jobs">email_enrichment_jobs</a>.<code>search_job_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-lead_records">lead_records</a>.<code>search_job_id</code> → <code>id</code></li></ul>
+                  <ul><li><a class="ref-link" href="#table-email_enrichment_jobs">email_enrichment_jobs</a>.<code>search_job_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-lead_records">lead_records</a>.<code>search_job_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-search_candidates">search_candidates</a>.<code>search_job_id</code> → <code>id</code></li><li><a class="ref-link" href="#table-search_query_runs">search_query_runs</a>.<code>search_job_id</code> → <code>id</code></li></ul>
                 </section>
                 <section>
                   <h3>Indexes &amp; unique</h3>
-                  <ul><li class='muted'>No extra indexes.</li></ul>
+                  <ul><li><code>ix_search_jobs_org_created</code> on <code>organization_id, created_at</code></li><li><code>ix_search_jobs_owner_created</code> on <code>owner_id, created_at</code></li><li><code>ix_search_jobs_trace_id</code> on <code>trace_id</code></li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-search_query_cache" data-table="search_query_cache">
+              <header class="table-head">
+                <h2>search_query_cache</h2>
+                <p class="lede">No description yet.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="search_query_cache id integer  ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache query_hash varchar(64)  ">
+                  <td><code>query_hash</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache query_text text  ">
+                  <td><code>query_text</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache page integer  ">
+                  <td><code>page</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache hits json  ">
+                  <td><code>hits</code></td>
+                  <td><code>JSON</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache hit_count integer  ">
+                  <td><code>hit_count</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache created_at datetime  ">
+                  <td><code>created_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_cache expires_at datetime  ">
+                  <td><code>expires_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li class='muted'>No outgoing foreign keys.</li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li class='muted'>Nothing else points at this table.</li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_query_cache_expires</code> on <code>expires_at</code></li><li><code>ix_search_query_cache_query_hash</code> unique on <code>query_hash</code></li></ul>
+                </section>
+              </div>
+            </article><article class="table-card" id="table-search_query_runs" data-table="search_query_runs">
+              <header class="table-head">
+                <h2>search_query_runs</h2>
+                <p class="lede">No description yet.</p>
+                <p class="meta">0 rows</p>
+              </header>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Flags</th>
+                      <th>References</th>
+                      <th>Default</th>
+                      <th>Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-search="search_query_runs id integer  ">
+                  <td><code>id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-pk">PK</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs search_job_id integer  ">
+                  <td><code>search_job_id</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td><a class="ref-link" href="#table-search_jobs">search_jobs.id</a></td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs query_text text  ">
+                  <td><code>query_text</code></td>
+                  <td><code>TEXT</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs query_hash varchar(64)  ">
+                  <td><code>query_hash</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs dimension varchar(64)  ">
+                  <td><code>dimension</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs page integer  ">
+                  <td><code>page</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs status varchar(32)  pending running completed failed">
+                  <td><code>status</code></td>
+                  <td><code>VARCHAR(32)</code><br><span class='enum'>values: pending, running, completed, failed</span></td>
+                  <td><span class="badge badge-idx">index</span> <span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs attempts integer  ">
+                  <td><code>attempts</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs hits integer  ">
+                  <td><code>hits</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs candidates_found integer  ">
+                  <td><code>candidates_found</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs duplicates integer  ">
+                  <td><code>duplicates</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs from_cache boolean  ">
+                  <td><code>from_cache</code></td>
+                  <td><code>BOOLEAN</code></td>
+                  <td><span class="badge badge-req">required</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs error_kind varchar(64)  ">
+                  <td><code>error_kind</code></td>
+                  <td><code>VARCHAR(64)</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs started_at datetime  ">
+                  <td><code>started_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs finished_at datetime  ">
+                  <td><code>finished_at</code></td>
+                  <td><code>DATETIME</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr><tr data-search="search_query_runs duration_ms integer  ">
+                  <td><code>duration_ms</code></td>
+                  <td><code>INTEGER</code></td>
+                  <td><span class="badge badge-null">nullable</span></td>
+                  <td>—</td>
+                  <td class="muted"><code>—</code></td>
+                  <td>—</td>
+                </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="ref-grid">
+                <section>
+                  <h3>This table points to</h3>
+                  <ul><li><code>search_job_id</code> → <a class="ref-link" href="#table-search_jobs">search_jobs.id</a></li></ul>
+                </section>
+                <section>
+                  <h3>Referenced by</h3>
+                  <ul><li class='muted'>Nothing else points at this table.</li></ul>
+                </section>
+                <section>
+                  <h3>Indexes &amp; unique</h3>
+                  <ul><li><code>ix_query_runs_job_status</code> on <code>search_job_id, status</code></li><li><code>ix_search_query_runs_query_hash</code> on <code>query_hash</code></li><li><code>ix_search_query_runs_search_job_id</code> on <code>search_job_id</code></li></ul>
                 </section>
               </div>
             </article><article class="table-card" id="table-users" data-table="users">
               <header class="table-head">
                 <h2>users</h2>
                 <p class="lede">People who sign in. Every search is owned by a user.</p>
-                <p class="meta">1 rows</p>
+                <p class="meta">0 rows</p>
               </header>
               <div class="table-wrap">
                 <table>
@@ -1278,7 +1986,7 @@
       <p id="no-results" class="empty hidden">No tables or columns match that search.</p>
     </main>
   </div>
-  <script id="dbwiki-meta" type="application/json">{"fingerprint": "843de7a22d53c495", "tables": ["domain_email_patterns", "email_enrichment_jobs", "email_evidence", "email_lookup_cache", "email_verification_events", "lead_records", "linkedin_sessions", "organization_members", "organizations", "provider_usage", "search_jobs", "users"]}</script>
+  <script id="dbwiki-meta" type="application/json">{"fingerprint": "06f3823605526763", "tables": ["domain_email_patterns", "email_enrichment_jobs", "email_evidence", "email_lookup_cache", "email_verification_events", "job_queue", "lead_records", "linkedin_sessions", "organization_members", "organizations", "provider_usage", "search_candidates", "search_jobs", "search_query_cache", "search_query_runs", "users"]}</script>
   <style>
     :root {
       --ink: #10231f;

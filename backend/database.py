@@ -22,7 +22,7 @@ def get_db():
         db.close()
 
 
-def _normalize_search_job_statuses() -> None:
+def _normalize_search_job_statuses(bind=None) -> None:
     """Fix legacy status strings (e.g. COMPLETED vs completed) after enum rollout."""
     from sqlalchemy import text
 
@@ -32,7 +32,7 @@ def _normalize_search_job_statuses() -> None:
         "RUNNING": "running",
         "FAILED": "failed",
     }
-    with engine.begin() as conn:
+    with (bind or engine).begin() as conn:
         for old, new in fixes.items():
             conn.execute(
                 text("UPDATE search_jobs SET status = :new WHERE status = :old"),
@@ -40,43 +40,123 @@ def _normalize_search_job_statuses() -> None:
             )
 
 
-def _ensure_search_job_columns() -> None:
+#: Portable DDL spellings, translated per dialect by :func:`_column_ddl`.
+_DIALECT_TYPES = {
+    "postgresql": {"DATETIME": "TIMESTAMP"},
+}
+
+
+def _column_ddl(ddl: str, bind=None) -> str:
+    overrides = _DIALECT_TYPES.get((bind or engine).dialect.name, {})
+    for portable, native in overrides.items():
+        if ddl.upper().startswith(portable):
+            return native + ddl[len(portable) :]
+    return ddl
+
+
+_ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "search_jobs": (
+        ("progress", "INTEGER DEFAULT 0"),
+        ("current_stage", "VARCHAR(64)"),
+        ("trace_id", "VARCHAR(64)"),
+        ("started_at", "DATETIME"),
+        ("completed_at", "DATETIME"),
+        ("error_message", "TEXT"),
+        ("cancel_requested", "BOOLEAN DEFAULT FALSE"),
+        ("total_queries", "INTEGER DEFAULT 0"),
+        ("completed_queries", "INTEGER DEFAULT 0"),
+        ("failed_queries", "INTEGER DEFAULT 0"),
+        ("candidates_found", "INTEGER DEFAULT 0"),
+        ("candidates_deduplicated", "INTEGER DEFAULT 0"),
+        ("qualified_leads", "INTEGER DEFAULT 0"),
+        ("enrichment_attempted", "INTEGER DEFAULT 0"),
+        ("enrichment_completed", "INTEGER DEFAULT 0"),
+        ("emails_found", "INTEGER DEFAULT 0"),
+        ("phones_found", "INTEGER DEFAULT 0"),
+        ("errors_count", "INTEGER DEFAULT 0"),
+    ),
+    "lead_records": (
+        ("company_domain", "VARCHAR(255)"),
+        ("email_status", "VARCHAR(32)"),
+        ("email_confidence", "VARCHAR(16)"),
+        ("email_source", "VARCHAR(64)"),
+        ("email_pattern", "VARCHAR(64)"),
+        ("email_source_url", "TEXT"),
+        ("email_evidence", "JSON"),
+        ("email_verification", "JSON"),
+        ("email_verified_at", "DATETIME"),
+        ("email_enriched_at", "DATETIME"),
+        ("identity_key", "VARCHAR(64)"),
+        ("linkedin_url_normalized", "VARCHAR(255)"),
+        ("candidate_id", "INTEGER"),
+        ("enrichment_status", "VARCHAR(32) DEFAULT 'pending'"),
+        ("enrichment_attempts", "INTEGER DEFAULT 0"),
+        ("enrichment_error", "VARCHAR(255)"),
+        ("enrichment_locked_until", "DATETIME"),
+        ("phone_source", "VARCHAR(64)"),
+    ),
+}
+
+#: Tables introduced by the pipeline refactor. ``create_all`` builds these whole,
+#: so they need no per-column migration entries.
+
+
+def _ensure_columns(bind=None) -> None:
     from sqlalchemy import inspect, text
 
-    insp = inspect(engine)
-    if "search_jobs" not in insp.get_table_names():
-        return
-    cols = {c["name"] for c in insp.get_columns("search_jobs")}
-    if "progress" not in cols:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE search_jobs ADD COLUMN progress INTEGER DEFAULT 0"))
+    bind = bind or engine
+    insp = inspect(bind)
+    tables = set(insp.get_table_names())
+    for table, specs in _ADDED_COLUMNS.items():
+        if table not in tables:
+            continue  # create_all already built it with every column
+        existing = {c["name"] for c in insp.get_columns(table)}
+        with bind.begin() as conn:
+            for name, ddl in specs:
+                if name in existing:
+                    continue
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {name} {_column_ddl(ddl, bind)}")
+                )
 
 
-_LEAD_EMAIL_COLUMNS = (
-    ("company_domain", "VARCHAR(255)"),
-    ("email_status", "VARCHAR(32)"),
-    ("email_confidence", "VARCHAR(16)"),
-    ("email_source", "VARCHAR(64)"),
-    ("email_pattern", "VARCHAR(64)"),
-    ("email_source_url", "TEXT"),
-    ("email_evidence", "JSON"),
-    ("email_verification", "JSON"),
-    ("email_verified_at", "DATETIME"),
-    ("email_enriched_at", "DATETIME"),
-)
+def _ensure_indexes(bind=None) -> None:
+    """Create any model-declared index missing from an existing table.
 
+    ``create_all`` only builds indexes alongside a brand-new table, so tables that
+    predate a model change never pick up new indexes without this.
+    """
+    import logging
 
-def _ensure_lead_email_columns() -> None:
     from sqlalchemy import inspect, text
 
-    insp = inspect(engine)
-    if "lead_records" not in insp.get_table_names():
-        return
-    cols = {c["name"] for c in insp.get_columns("lead_records")}
-    with engine.begin() as conn:
-        for name, ddl in _LEAD_EMAIL_COLUMNS:
-            if name not in cols:
-                conn.execute(text(f"ALTER TABLE lead_records ADD COLUMN {name} {ddl}"))
+    bind = bind or engine
+    insp = inspect(bind)
+    tables = set(insp.get_table_names())
+    for table in Base.metadata.sorted_tables:
+        if table.name not in tables or not table.indexes:
+            continue
+        existing = {ix.get("name") for ix in insp.get_indexes(table.name)}
+        for index in table.indexes:
+            if not index.name or index.name in existing:
+                continue
+            columns = [c.name for c in index.columns]
+            if not columns:
+                continue
+            unique = "UNIQUE " if index.unique else ""
+            statement = (
+                f"CREATE {unique}INDEX IF NOT EXISTS {index.name} "
+                f"ON {table.name} ({', '.join(columns)})"
+            )
+            try:
+                with bind.begin() as conn:
+                    conn.execute(text(statement))
+            except Exception:
+                # A pre-existing duplicate can block a unique index. Log and continue
+                # rather than taking the whole app down on boot.
+                logging.getLogger(__name__).warning(
+                    "could not create index %s on %s", index.name, table.name, exc_info=True
+                )
 
 
 def init_db():
@@ -84,8 +164,8 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     _normalize_search_job_statuses()
-    _ensure_search_job_columns()
-    _ensure_lead_email_columns()
+    _ensure_columns()
+    _ensure_indexes()
     try:
         from backend.services.dbwiki import refresh_dbwiki
 

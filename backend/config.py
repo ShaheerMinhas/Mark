@@ -52,3 +52,36 @@ TOMBA_API_KEY = os.getenv("TOMBA_API_KEY", "")
 TOMBA_SECRET = os.getenv("TOMBA_SECRET", "")
 EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", os.getenv("EMAIL_PROVIDERS", ""))
 EMAIL_CACHE_DAYS = int(os.getenv("EMAIL_CACHE_DAYS", "30"))
+
+
+def _flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Worker runtime. The API process hosts workers by default so the existing
+# single-service Railway deployment keeps working; set MARK_INLINE_WORKER=0 once a
+# dedicated `python -m backend.worker` service is running.
+INLINE_WORKER = _flag("MARK_INLINE_WORKER", True)
+# Three workers so a new search is not stuck behind two enrichment passes.
+WORKER_CONCURRENCY = max(1, int(os.getenv("MARK_WORKER_CONCURRENCY", "3")))
+WORKER_LEASE_SECONDS = max(30, int(os.getenv("MARK_WORKER_LEASE_SECONDS", "300")))
+WORKER_IDLE_SLEEP_SECONDS = max(0.2, float(os.getenv("MARK_WORKER_IDLE_SLEEP", "2.0")))
+LOG_LEVEL = os.getenv("MARK_LOG_LEVEL", "INFO")
+
+# Public-query result cache. Set to 0 to disable.
+SEARCH_CACHE_HOURS = max(0, int(os.getenv("MARK_SEARCH_CACHE_HOURS", "24")))
+
+# How many search queries run at once. Each slot is one independent client, so
+# twelve queries in flight are twelve DuckDuckGo/Google/Yahoo sessions, not one
+# session asked twelve times in a row.
+QUERY_PARALLELISM = max(1, min(24, int(os.getenv("MARK_QUERY_PARALLELISM", "12"))))
+
+# Extra copies of each backend. Four Google clients can each wait their own
+# two seconds instead of sharing one throttle.
+ENGINE_REPLICAS = max(1, min(8, int(os.getenv("MARK_ENGINE_REPLICAS", "4"))))
+
+# Public-web email/phone lookups per enrichment batch. Independent of discovery.
+ENRICHMENT_PARALLELISM = max(1, min(24, int(os.getenv("MARK_ENRICHMENT_PARALLELISM", "16"))))

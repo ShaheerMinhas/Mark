@@ -10,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import CORS_ORIGINS
+from backend.config import CORS_ORIGINS, INLINE_WORKER, LOG_LEVEL
 from backend.database import init_db
-from backend.routers import auth, organizations, searches
+from backend.observability import configure_logging
+from backend.routers import auth, organizations, search_jobs, searches
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -20,8 +21,20 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    configure_logging(LOG_LEVEL)
     init_db()
-    yield
+    workers = []
+    if INLINE_WORKER:
+        # Keeps the current single-service Railway deployment working. Set
+        # MARK_INLINE_WORKER=0 once a dedicated worker service is running.
+        from backend.worker import start_inline_workers, stop_inline_workers
+
+        workers = start_inline_workers()
+    try:
+        yield
+    finally:
+        if workers:
+            stop_inline_workers()
 
 
 app = FastAPI(
@@ -42,6 +55,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(searches.router)
+app.include_router(search_jobs.router)
 app.include_router(organizations.router)
 
 

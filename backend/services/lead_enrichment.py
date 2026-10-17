@@ -94,8 +94,9 @@ def _generate_ai_description(
     snippet: str,
     prompt: str,
     activity: str,
+    allow_openai: bool = True,
 ) -> str:
-    if OPENAI_API_KEY:
+    if OPENAI_API_KEY and allow_openai:
         try:
             import httpx
 
@@ -143,7 +144,19 @@ def _generate_ai_description(
     return f"{sentence}{extra}"
 
 
-def to_full_lead(raw: dict[str, Any], *, prompt: str, filters: dict[str, Any]) -> dict[str, Any]:
+def to_full_lead(
+    raw: dict[str, Any],
+    *,
+    prompt: str,
+    filters: dict[str, Any],
+    allow_openai: bool = True,
+) -> dict[str, Any]:
+    """Shape a raw hit into lead fields.
+
+    Pass ``allow_openai=False`` on hot paths such as candidate promotion: the
+    OpenAI summary is a per-lead HTTP call, so it belongs in the enrichment stage.
+    The local fallback summary is still written either way.
+    """
     title = (raw.get("title") or raw.get("work_designation") or "").strip()
     snippet = raw.get("snippet") or raw.get("raw_snippet") or ""
     name = (raw.get("name") or "").strip() or "Unknown"
@@ -181,6 +194,7 @@ def to_full_lead(raw: dict[str, Any], *, prompt: str, filters: dict[str, Any]) -
             snippet=snippet,
             prompt=prompt,
             activity=activity,
+            allow_openai=allow_openai,
         ),
         "work_field": field or None,
         "work_designation": title or None,

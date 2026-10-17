@@ -3,14 +3,30 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urlparse
 
 from backend.services.EmailModule.extract import email_fits_person, extract_emails
 from backend.services.EmailModule.robots import allowed
 from backend.services.EmailModule.web import _fetch_text, _search_queries
 from backend.services.ddg import ddg_text
 
-_CONTACT_PATHS = ("/contact", "/contact-us", "/about", "/team", "/about-us", "/people")
+#: These hosts show up in email SERPs and never yield a public address.
+_SKIP_HOSTS = (
+    "zoominfo.com",
+    "rocketreach.co",
+    "linkedin.com",
+    "facebook.com",
+    "apollo.io",
+    "lusha.com",
+    "signalhire.com",
+    "contactout.com",
+    "beenverified.com",
+)
+
+
+def _skip_fetch(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    return any(host == domain or host.endswith("." + domain) for domain in _SKIP_HOSTS)
 
 
 def discover_public_emails(
@@ -44,36 +60,31 @@ def discover_public_emails(
     queries = _search_queries(name, company, domain)
 
     pages = 0
+    hrefs: list[str] = []
     for query in queries:
-        for raw in ddg_text(query, max_results=4 if snippets_only else 6, ddgs=ddgs):
+        for raw in ddg_text(query, max_results=5, ddgs=ddgs):
             title = raw.get("title") or ""
             body = raw.get("body") or raw.get("snippet") or ""
             href = (raw.get("href") or raw.get("link") or "").strip()
             for email in extract_emails(f"{title}\n{body}", name=name, require_name_match=bool(name)):
                 add(email, href, f"search snippet: {query}")
-            if not href or pages >= max_pages:
-                continue
-            if not allowed(href):
-                continue
-            page = _fetch_text(href)
-            pages += 1
-            if not page:
-                continue
-            for email in extract_emails(page, name=name, require_name_match=bool(name)):
-                add(email, href, f"public page {href}")
+            if href:
+                hrefs.append(href)
+        if found:
+            return found
 
-    if domain and not snippets_only:
-        for path in _CONTACT_PATHS:
-            url = urljoin(f"https://{domain}", path)
-            if not allowed(url):
-                continue
-            if pages >= max_pages:
-                break
-            page = _fetch_text(url)
-            pages += 1
-            if not page:
-                continue
-            for email in extract_emails(page, name=name, require_name_match=bool(name)):
-                add(email, url, f"company page {path}")
+    for href in hrefs:
+        if pages >= min(max_pages, 2):
+            break
+        if _skip_fetch(href) or not allowed(href):
+            continue
+        page = _fetch_text(href)
+        pages += 1
+        if not page:
+            continue
+        for email in extract_emails(page, name=name, require_name_match=bool(name)):
+            add(email, href, f"public page {href}")
+        if found:
+            return found
 
     return found

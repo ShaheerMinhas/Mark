@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.services.CompanyModule.web import company_website
+from backend.services import provider_health
 from backend.services.EmailModule.extract import email_fits_person, is_plausible_email, name_parts
 from backend.services.EmailModule.patterns import detect_pattern, generate_candidates, match_pattern
 from backend.services.EmailModule.providers import configured_providers
@@ -91,9 +91,13 @@ class EmailEnrichmentService:
         self._providers = providers
 
     def providers(self):
-        if self._providers is not None:
-            return [p for p in self._providers if p.available()]
-        return configured_providers()
+        """Configured providers, minus any whose circuit is currently tripped open."""
+        pool = (
+            [p for p in self._providers if p.available()]
+            if self._providers is not None
+            else configured_providers()
+        )
+        return [p for p in pool if not provider_health.is_open(p.name)]
 
     def enrich(
         self,
@@ -123,12 +127,6 @@ class EmailEnrichmentService:
         result.domain = domain
         result.discovered_at = utc_now()
 
-        if not domain and person.company_name and use_public_web:
-            domain, website = company_website(person.company_name)
-            result.domain = domain
-            if website:
-                result.evidence.append(Evidence(type="COMPANY_DOMAIN", url=website, detail="company website"))
-
         public_hits = []
         if person.snippet:
             public_hits = discover_public_emails(
@@ -138,7 +136,8 @@ class EmailEnrichmentService:
                 snippet=person.snippet,
                 snippets_only=True,
             )
-        if use_public_web:
+
+        if use_public_web and not public_hits:
             public_hits.extend(
                 discover_public_emails(
                     person.name,
@@ -292,10 +291,16 @@ class EmailEnrichmentService:
                 http_status=found.http_status,
                 detail=found.detail,
             )
-            if found.http_status == 429:
+            if found.http_status == 429 or found.http_status >= 500:
+                provider_health.record_failure(
+                    provider.name, http_status=found.http_status, detail=found.detail
+                )
                 continue
             if not found.email or not is_plausible_email(found.email):
+                # A clean "no match" is a working provider, not a failing one.
+                provider_health.record_success(provider.name)
                 continue
+            provider_health.record_success(provider.name)
             host = found.email.split("@", 1)[-1].lower() if "@" in found.email else domain
             already_verified = provider.name == "findymail"
             result = EmailResult(
@@ -335,8 +340,12 @@ class EmailEnrichmentService:
                 http_status=checked.http_status,
                 detail=checked.detail,
             )
-            if checked.http_status == 429:
+            if checked.http_status == 429 or checked.http_status >= 500:
+                provider_health.record_failure(
+                    provider.name, http_status=checked.http_status, detail=checked.detail
+                )
                 continue
+            provider_health.record_success(provider.name)
             payload = {
                 "status": normalize_provider_verify(checked.status),
                 "checked_at": utc_now(),

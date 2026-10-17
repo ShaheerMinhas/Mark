@@ -3,6 +3,11 @@ import { api } from "../api/client.js";
 import FilterGrid from "./FilterGrid.jsx";
 import LeadsTable from "./LeadsTable.jsx";
 import SearchProgress from "./SearchProgress.jsx";
+import SearchFunnel from "./SearchFunnel.jsx";
+
+const POLL_INTERVAL_MS = 1200;
+const PAGE_SIZE = 50;
+const OPEN_STATUSES = new Set(["pending", "discovering", "filtering", "enriching", "running"]);
 
 function defaultFilterValues(filterDefs) {
   const values = {};
@@ -26,8 +31,8 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isOpenStatus(status) {
-  return status === "pending" || status === "running";
+function isOpen(status) {
+  return OPEN_STATUSES.has(status);
 }
 
 export default function SearchView({ prefill, onClearPrefill }) {
@@ -36,12 +41,13 @@ export default function SearchView({ prefill, onClearPrefill }) {
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [leads, setLeads] = useState([]);
+  const [pageMeta, setPageMeta] = useState(null);
+  const [page, setPage] = useState(1);
   const [meta, setMeta] = useState("");
   const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [found, setFound] = useState(0);
-  const [startedAt, setStartedAt] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [funnel, setFunnel] = useState(null);
   const [searchId, setSearchId] = useState(null);
   const [emailJob, setEmailJob] = useState(null);
   const [findingEmails, setFindingEmails] = useState(false);
@@ -56,54 +62,80 @@ export default function SearchView({ prefill, onClearPrefill }) {
     });
   }, []);
 
-  const applySnapshot = useCallback((data) => {
-    setProgress(data.search?.progress ?? 0);
-    setFound(data.search?.found_count ?? data.count ?? 0);
-    setMeta(data.message || "");
-    setName(data.search?.name || "");
-    setPrompt(data.search?.prompt || "");
-    if (data.search?.id) setSearchId(data.search.id);
-    if (data.email_job) setEmailJob(data.email_job);
-    if (data.leads) setLeads(data.leads);
+  const loadPage = useCallback(async (id, pageNumber) => {
+    const data = await api(
+      `/api/search-jobs/${id}/leads?page=${pageNumber}&page_size=${PAGE_SIZE}`
+    );
+    setLeads(data.items || []);
+    setPageMeta(data.page || null);
+    return data;
   }, []);
 
+  const loadFunnel = useCallback(async (id) => {
+    try {
+      setFunnel(await api(`/api/search-jobs/${id}/funnel`));
+    } catch {
+      setFunnel(null);
+    }
+  }, []);
+
+  /**
+   * Polls job status and refreshes the visible page whenever the backend reports
+   * more leads. Leads appear while discovery is still running.
+   */
   const watchSearch = useCallback(
     async (id) => {
       const token = ++watchToken.current;
+      let lastLeadCount = -1;
+
       while (token === watchToken.current) {
-        const data = await api(`/api/searches/${id}`);
+        const status = await api(`/api/search-jobs/${id}`);
         if (token !== watchToken.current) return null;
-        applySnapshot(data);
-        if (!isOpenStatus(data.search?.status)) {
-          setLeads(data.leads || []);
-          setMeta(`${data.message} · ${data.mode} mode · ${data.count} leads`);
-          setProgress(100);
-          return data;
+
+        setProgress(status);
+        setMeta(status.message || "");
+
+        if (status.lead_count !== lastLeadCount) {
+          lastLeadCount = status.lead_count;
+          if (status.lead_count > 0) {
+            await loadPage(id, 1);
+            setPage(1);
+          }
         }
-        await sleep(1100);
+
+        if (!isOpen(status.status)) {
+          await loadFunnel(id);
+          if (status.lead_count > 0) await loadPage(id, 1);
+          return status;
+        }
+        await sleep(POLL_INTERVAL_MS);
       }
       return null;
     },
-    [applySnapshot]
+    [loadFunnel, loadPage]
   );
 
   const loadSearch = useCallback(
     async (id) => {
+      watchToken.current += 1;
       setSearching(true);
       setShowResults(true);
       setLeads([]);
-      setProgress(4);
-      setFound(0);
-      setStartedAt(Date.now());
+      setPageMeta(null);
+      setFunnel(null);
+      setProgress(null);
+      setSearchId(id);
       setMeta("Loading…");
       try {
-        const data = await api(`/api/searches/${id}`);
-        applySnapshot(data);
-        if (isOpenStatus(data.search?.status)) {
+        const status = await api(`/api/search-jobs/${id}`);
+        setProgress(status);
+        setName(status.name || "");
+        if (isOpen(status.status)) {
           await watchSearch(id);
         } else {
-          setLeads(data.leads || []);
-          setMeta(`${data.message} · ${data.count} leads`);
+          setMeta(status.message || "");
+          await loadFunnel(id);
+          if (status.lead_count > 0) await loadPage(id, 1);
         }
       } catch (err) {
         setMeta(err.message);
@@ -112,7 +144,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
         setSearching(false);
       }
     },
-    [applySnapshot, watchSearch]
+    [loadFunnel, loadPage, watchSearch]
   );
 
   useEffect(() => {
@@ -122,9 +154,12 @@ export default function SearchView({ prefill, onClearPrefill }) {
     }
   }, [prefill, loadSearch, onClearPrefill]);
 
-  useEffect(() => () => {
-    watchToken.current += 1;
-  }, []);
+  useEffect(
+    () => () => {
+      watchToken.current += 1;
+    },
+    []
+  );
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -132,10 +167,11 @@ export default function SearchView({ prefill, onClearPrefill }) {
     setSearching(true);
     setShowResults(true);
     setLeads([]);
-    setProgress(1);
-    setFound(0);
-    setStartedAt(Date.now());
-    setMeta("Starting a 2-minute public search…");
+    setPageMeta(null);
+    setFunnel(null);
+    setProgress(null);
+    setEmailJob(null);
+    setMeta("Queued — discovery is starting…");
     try {
       const filters = {
         ...filterValues,
@@ -146,21 +182,37 @@ export default function SearchView({ prefill, onClearPrefill }) {
         company_location: String(filterValues.company_location ?? "").trim(),
         industry: String(filterValues.industry ?? "").trim(),
       };
-      const data = await api("/api/searches", {
+      // Returns immediately with a job id; the worker does the discovery.
+      const created = await api("/api/searches", {
         method: "POST",
         body: { name: name.trim(), prompt: prompt.trim(), filters, save_results: true },
       });
-      applySnapshot(data);
-      if (isOpenStatus(data.search?.status) && data.search?.id) {
-        await watchSearch(data.search.id);
-      } else {
-        setLeads(data.leads || []);
-        setMeta(`${data.message} · ${data.mode} mode · ${data.count} leads`);
-      }
+      const id = created.search?.id;
+      setSearchId(id);
+      if (id) await watchSearch(id);
     } catch (err) {
       setMeta(err.message);
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function goToPage(pageNumber) {
+    if (!searchId) return;
+    try {
+      await loadPage(searchId, pageNumber);
+      setPage(pageNumber);
+    } catch (err) {
+      setMeta(err.message);
+    }
+  }
+
+  async function handleCancel() {
+    if (!searchId) return;
+    try {
+      setProgress(await api(`/api/search-jobs/${searchId}/cancel`, { method: "POST" }));
+    } catch (err) {
+      setMeta(err.message);
     }
   }
 
@@ -169,14 +221,16 @@ export default function SearchView({ prefill, onClearPrefill }) {
     try {
       while (true) {
         const data = await api(`/api/searches/${id}/emails`);
-        applySnapshot(data);
+        setEmailJob(data.email_job || null);
         const status = data.email_job?.status;
         if (!status || status === "completed" || status === "failed") {
           if (data.email_job?.message) setMeta(data.email_job.message);
           break;
         }
-        await sleep(1200);
+        await sleep(POLL_INTERVAL_MS);
       }
+      await loadPage(id, page);
+      await loadFunnel(id);
     } catch (err) {
       setMeta(err.message);
     } finally {
@@ -190,7 +244,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
     setMeta("Finding emails…");
     try {
       const data = await api(`/api/searches/${searchId}/emails`, { method: "POST" });
-      applySnapshot(data);
+      setEmailJob(data.email_job || null);
       await watchEmails(searchId);
     } catch (err) {
       setMeta(err.message);
@@ -215,13 +269,15 @@ export default function SearchView({ prefill, onClearPrefill }) {
     }
   }
 
+  const totalLeads = pageMeta?.total ?? leads.length;
+
   return (
     <section className="view search-view">
       <div className="search-main">
         <h2>New lead search</h2>
         <p className="lede">
-          No LinkedIn login required. Mark spends about 2 minutes on a paced public search so it can
-          find more people without getting blocked.
+          No LinkedIn login required. Mark searches public profiles in the background and shows
+          leads as it finds them — you don't have to wait for the whole run.
         </p>
         <section className="search-results-col" aria-live="polite">
           {showResults ? (
@@ -232,31 +288,59 @@ export default function SearchView({ prefill, onClearPrefill }) {
                   {searching ? null : <p className="meta">{meta}</p>}
                   {emailJob?.status === "running" || findingEmails ? (
                     <p className="meta">
-                      Emails {emailJob?.processed ?? 0}/{emailJob?.total ?? leads.length}
+                      Emails {emailJob?.processed ?? 0}/{emailJob?.total ?? totalLeads}
                       {emailJob?.message ? ` · ${emailJob.message}` : ""}
                     </p>
                   ) : null}
                 </div>
-                {!searching && searchId && leads.length ? (
-                  <button type="button" onClick={handleFindEmails} disabled={findingEmails}>
-                    {findingEmails ? "Finding emails…" : "Find emails"}
-                  </button>
-                ) : null}
+                <div className="results-actions">
+                  {searching ? (
+                    <button type="button" onClick={handleCancel}>
+                      Stop search
+                    </button>
+                  ) : null}
+                  {!searching && searchId && leads.length ? (
+                    <button type="button" onClick={handleFindEmails} disabled={findingEmails}>
+                      {findingEmails ? "Finding emails…" : "Find emails"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
+
               {searching ? (
                 <SearchProgress
-                  progress={progress}
+                  progress={progress?.progress ?? 0}
                   message={meta}
-                  found={found}
-                  startedAt={startedAt}
+                  status={progress?.status}
+                  stage={progress?.current_stage}
+                  counters={progress}
                 />
-              ) : null}
-              {!searching || leads.length ? (
-                <LeadsTable
-                  leads={leads}
-                  onFindOne={findingEmails ? undefined : handleFindOne}
-                  lookingId={lookingId}
-                />
+              ) : (
+                <SearchFunnel funnel={funnel} />
+              )}
+
+              <LeadsTable
+                leads={leads}
+                onFindOne={findingEmails ? undefined : handleFindOne}
+                lookingId={lookingId}
+              />
+
+              {pageMeta && pageMeta.total_pages > 1 ? (
+                <nav className="results-pager" aria-label="Lead pages">
+                  <button type="button" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
+                    Previous
+                  </button>
+                  <span>
+                    Page {pageMeta.page} of {pageMeta.total_pages} · {pageMeta.total} leads
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => goToPage(page + 1)}
+                    disabled={!pageMeta.has_next}
+                  >
+                    Next
+                  </button>
+                </nav>
               ) : null}
             </>
           ) : (
@@ -286,7 +370,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
               id="prompt"
               rows={3}
               required
-              placeholder="e.g. Founders of boutique fitness studios in Austin who are active online"
+              placeholder="e.g. Marketing managers in Swedish logistics companies"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
             />
@@ -295,9 +379,12 @@ export default function SearchView({ prefill, onClearPrefill }) {
         </div>
         <div className="actions">
           <button type="submit" disabled={searching}>
-            {searching ? "Searching for 2 minutes…" : "Find leads"}
+            {searching ? "Searching…" : "Find leads"}
           </button>
-          <p className="search-pace-hint">Paced on purpose — better chance at dozens of real people, not a rate-limit wall.</p>
+          <p className="search-pace-hint">
+            Runs in the background. Candidates are saved as they're found, so a rate limit never
+            wipes out the whole search.
+          </p>
         </div>
       </form>
     </section>

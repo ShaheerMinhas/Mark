@@ -26,11 +26,9 @@ def _search_queries(name: str, company: str, domain: str) -> list[str]:
         queries.append(f'"{name}" "{company}" contact')
     if name and domain:
         queries.append(f'"{name}" "@{domain}"')
-        queries.append(f'site:{domain} "{name}" email')
-        queries.append(f'site:{domain} "{name}"')
-    if company and not name:
-        queries.append(f'"{company}" contact email')
-    return list(dict.fromkeys(queries))
+    if name:
+        queries.append(f'"{name}" email')
+    return list(dict.fromkeys(queries))[:3]
 
 
 def _fetch_text(url: str) -> str:

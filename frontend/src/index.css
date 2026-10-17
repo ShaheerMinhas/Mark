@@ -540,6 +540,70 @@ h2 {
 .results { margin-top: 1.5rem; }
 .results-head { margin-bottom: 0.75rem; display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .results h3 { margin: 0; font-family: var(--font-display); }
+.results-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+.results-pager {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.results-pager button {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.results-pager button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.search-progress-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.search-funnel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.search-funnel-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+}
+
+.search-funnel-steps li { display: flex; flex-direction: column; gap: 0.1rem; }
+.search-funnel-value { font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
+.search-funnel-label { font-size: 0.82rem; font-weight: 500; }
+.search-funnel-hint { font-size: 0.72rem; color: var(--ink-soft); }
+
+.search-funnel-rejections { margin-top: 1rem; font-size: 0.8rem; }
+.search-funnel-rejections summary { cursor: pointer; color: var(--ink-soft); }
+.search-funnel-rejections ul { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+
+.search-funnel-rejections li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.search-funnel-note {
+  margin: 0.85rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
 
 .search-pace-hint {
   margin: 0.35rem 0 0;

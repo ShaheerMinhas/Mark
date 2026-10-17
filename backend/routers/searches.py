@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -17,8 +16,9 @@ from backend.services.EmailModule.jobs import (
     start_email_job,
 )
 from backend.services.export_service import leads_to_csv, leads_to_xml
+from backend.services.search_jobs import enqueue_discovery
 from backend.services.search_presenter import ensure_search_ready, search_job_out
-from backend.services.search_service import create_search_job, execute_search_job, run_search
+from backend.services.search_service import create_search_job, run_search
 
 router = APIRouter(prefix="/api", tags=["searches"])
 
@@ -103,13 +103,15 @@ def create_search(
         filters=body.filters.model_dump(),
         organization_id=org_id,
     )
-    threading.Thread(target=execute_search_job, args=(job.id,), daemon=True).start()
+    # Queued rather than run in-request: a worker picks it up and the HTTP call
+    # returns immediately with a job id to poll.
+    enqueue_discovery(db, job)
     return SearchResultOut(
         search=search_job_out(job),
         leads=[],
         query_used=job.query_used or "",
         count=0,
-        message=job.message or "Starting a 2-minute public search…",
+        message=job.message or "Queued — discovery is starting…",
         mode=job.mode,
     )
 

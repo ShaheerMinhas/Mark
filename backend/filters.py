@@ -102,5 +102,5 @@ FILTER_DEFINITIONS = {
     },
     "active_only": {"label": "Active LinkedIn users only", "type": "boolean", "default": True},
     "business_only": {"label": "Business-associated only", "type": "boolean", "default": True},
-    "max_results": {"label": "Max results", "type": "number", "min": 10, "max": 250, "default": 100},
+    "max_results": {"label": "Max results", "type": "number", "min": 10, "max": 2000, "default": 1000},
 }

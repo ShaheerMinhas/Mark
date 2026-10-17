@@ -113,6 +113,11 @@ _AT_STOPWORDS = {
     "home", "work", "scale", "ease", "heart", "hand", "night", "university",
     "college", "school", "least", "present", "this", "that", "which",
     "host", "chief", "at",
+    # Conjunctions and prepositions: a company string starting with one of these
+    # is a fragment of a longer job title, not an employer ("and Commercial",
+    # "EMEA hos"). "hos"/"bei"/"chez" are the local "at" in Nordic/DE/FR profiles.
+    "and", "or", "of", "for", "with", "in", "on", "to", "from", "by", "as",
+    "hos", "bei", "chez", "presso", "en",
 }
 
 _ROLE_WORDS = {
@@ -179,11 +184,16 @@ _SERP_JUNK = re.compile(
     r"(?i)(?:wikipedia|yahoo|sign in|log\s?in|facebook|meta for business|"
     r"wireless phone|total commander|practo|at sign|linkedinat)"
 )
+# Accented Latin letters are included deliberately: an ASCII-only class truncates
+# "Lina Stenesjö" to "Lina Stenesj" and leaks the "ö" into the parsed job title,
+# which corrupts every Nordic, German, French, and Iberian name.
+_NAME_UPPER = "A-ZÀ-ÖØ-ÞĀ-Ž"
+_NAME_LOWER = "a-zß-öø-ÿāāž"
 _PERSON_NAME_RE = re.compile(
     r"^("
-    r"[A-Z][a-zA-Z'’\-]+"
-    r"(?:\s+[A-Z]\.)?"
-    r"(?:\s+[A-Z][a-zA-Z'’\-]+){0,3}"
+    rf"[{_NAME_UPPER}][{_NAME_LOWER}{_NAME_UPPER}'’\-]+"
+    rf"(?:\s+[{_NAME_UPPER}]\.)?"
+    rf"(?:\s+[{_NAME_UPPER}][{_NAME_LOWER}{_NAME_UPPER}'’\-]+){{0,3}}"
     r")"
 )
 
@@ -239,12 +249,38 @@ def _is_linkedin_person(url: str) -> bool:
     return bool(_normalize_linkedin_url(url))
 
 
+#: Bare place names that a scraped "company" sometimes collapses to. Matched only
+#: as the entire string, since several are legitimate words inside a real company
+#: name ("Nordic Freight", "Europe RPET"). Ambiguous country names that are also
+#: common brands or surnames (Jordan, Chad) are deliberately omitted.
+_BARE_PLACES = frozenset(
+    {
+        "sweden", "norway", "denmark", "finland", "iceland", "germany", "france",
+        "spain", "italy", "portugal", "netherlands", "holland", "belgium",
+        "austria", "switzerland", "poland", "czechia", "czech republic", "ireland",
+        "scotland", "wales", "england", "united kingdom", "great britain",
+        "canada", "australia", "new zealand", "india", "pakistan", "japan",
+        "china", "singapore", "malaysia", "indonesia", "thailand", "vietnam",
+        "brazil", "mexico", "argentina", "chile", "colombia", "peru",
+        "south africa", "nigeria", "kenya", "egypt", "morocco", "israel",
+        "turkey", "greece", "romania", "hungary", "bulgaria", "croatia",
+        "slovakia", "slovenia", "estonia", "latvia", "lithuania", "ukraine",
+        "russia", "saudi arabia", "qatar", "kuwait",
+        "europe", "asia", "africa", "emea", "apac", "latam", "anz",
+        "nordics", "nordic region", "scandinavia", "benelux", "dach",
+        "middle east", "north america", "south america", "worldwide", "global",
+    }
+)
+
+
 def _looks_like_location(text: str) -> bool:
     t = (text or "").strip()
     if not t:
         return False
     if re.search(r"\b(Inc\.?|LLC|Ltd\.?|Corp\.?|Corporation|Company)\b", t, re.I):
         return False
+    if t.lower().strip(" ,.") in _BARE_PLACES:
+        return True
     if re.search(
         r"\b(Area|Region|Metropolitan|Metro|Greater|County|Province|District|"
         r"United States|USA|U\.S\.|UK|Remote|Worldwide|Global)\b",
@@ -449,7 +485,11 @@ def _clean_company(raw: str, *, name: str = "") -> str:
 
     if _EMAIL_IN_TEXT.fullmatch(company):
         return ""
-    if re.search(r"\b(view|profile|linkedin|connections?|followers?|see the complete|wikipedia)\b", company, re.I):
+    if re.search(r"\b(view|profile|connections?|followers?|see the complete|wikipedia)\b", company, re.I):
+        return ""
+    # Not word-bounded: SERP snippets run profiles together without a separator,
+    # yielding strings like "LinkedInKarolin Henningsso".
+    if "linkedin" in company.lower():
         return ""
     if _looks_like_location(company):
         return ""
@@ -460,8 +500,11 @@ def _clean_company(raw: str, *, name: str = "") -> str:
         return ""
     if name and lower == name.lower():
         return ""
-    first = re.split(r"\s+", lower)[0]
-    if first in _AT_STOPWORDS:
+    words = re.split(r"\s+", lower)
+    if words[0] in _AT_STOPWORDS:
+        return ""
+    # A trailing preposition means the match stopped mid-phrase ("EMEA hos").
+    if len(words) > 1 and words[-1] in _AT_STOPWORDS:
         return ""
     if re.search(
         r"(?i)^(award-winning|building|helping|passionate|leading|experienced|"
@@ -494,6 +537,18 @@ def _company_from_role_at(text: str, *, name: str = "") -> str:
     return _clean_company(match.group(1), name=name)
 
 
+def _trim_company_tail(text: str) -> str:
+    """Cut a scraped company at the first sentence or clause boundary.
+
+    Snippet patterns capture to end of line, so "Nordic Freight AB. Stockholm."
+    arrives as one string and would otherwise be rejected wholesale.
+    """
+    cleaned = (text or "").strip()
+    # A period that ends a sentence, as opposed to one inside "A.B." or "Inc."
+    cleaned = re.split(r"\.\s+(?=[A-ZÀ-ÖØ-Þ])|\.$|\s+[·|]\s+|,\s+", cleaned)[0]
+    return cleaned.strip(" ,.;:")
+
+
 def _company_from_snippet(body: str, *, name: str = "") -> str:
     """Conservative snippet scrape — only high-confidence employer patterns."""
     if not body:
@@ -502,13 +557,16 @@ def _company_from_snippet(body: str, *, name: str = "") -> str:
         r"(?i)Experience:\s*([^·|\n]{2,60})",
         rf"(?i)Experience[:\s]+{_JOB_TITLE_RE}\s+(?:at|@)\s*([^·|\n]+)",
         rf"(?i)\b{_JOB_TITLE_RE}\s+(?:at|@)\s*([^·|\n]+)",
+        # LinkedIn renders experience as "Role. Employer. Mar 2024 - Present",
+        # with no "at" to anchor on.
+        rf"(?i)\b{_JOB_TITLE_RE}\s*[.·]\s*([{_NAME_UPPER}][^.·|\n]{{2,60}}?)\s*[.·]",
         r"^([A-Z][^·|\n]{2,50}(?:,?\s+(?:LLC|Inc\.?|Ltd\.?|Corp\.?)))\b",
         r"([A-Z][\w&.''\-]*(?:\s+(?:&|and|[A-Z][\w&.''\-]*)){0,4})\s*[·|]\s*(?:Full-?time|Part-?time|Contract)\b",
     ]
     for pat in patterns:
         match = re.search(pat, body)
         if match:
-            cleaned = _clean_company(match.group(1), name=name)
+            cleaned = _clean_company(_trim_company_tail(match.group(1)), name=name)
             if cleaned:
                 return cleaned
     return ""
@@ -1131,7 +1189,7 @@ def search_leads(
     job_titles = _as_list(job_titles)
     companies = _as_list(company)
     industries = _as_list(industry)
-    max_results = max(10, min(int(max_results or 100), 250))
+    max_results = max(10, min(int(max_results or 1000), 2000))
 
     if not prompt or not prompt.strip():
         return {"leads": [], "query_used": "", "count": 0, "message": "Enter a marketing prompt."}

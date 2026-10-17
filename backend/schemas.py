@@ -102,7 +102,7 @@ class SearchFilters(BaseModel):
     age_min: Optional[int] = Field(default=25, ge=13, le=100)
     age_max: Optional[int] = Field(default=45, ge=13, le=100)
     language: str = ""
-    max_results: int = Field(default=100, ge=10, le=250)
+    max_results: int = Field(default=1000, ge=10, le=2000)
     active_only: bool = True
     business_only: bool = True
 
@@ -125,6 +125,7 @@ class LeadOut(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
+    phone_source: Optional[str] = None
     personal_location: Optional[str] = None
     ai_description: Optional[str] = None
     work_field: Optional[str] = None
@@ -158,14 +159,106 @@ class SearchJobOut(BaseModel):
     linkedin_url: Optional[str]
     query_used: Optional[str]
     mode: str
+    #: Collapsed to pending/running/completed/failed for existing clients.
     status: SearchJobStatus
+    #: The granular pipeline status (discovering, filtering, enriching, …).
+    detailed_status: Optional[SearchJobStatus] = None
+    stage: Optional[str] = None
     message: Optional[str]
     progress: int = 0
     found_count: int = 0
     lead_count: int = 0
+    candidates_found: int = 0
+    qualified_leads: int = 0
+    emails_found: int = 0
+    phones_found: int = 0
     created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class SearchProgressOut(BaseModel):
+    """Everything the frontend needs to render progress, with no lead payload."""
+
+    id: int
+    name: str
+    status: SearchJobStatus
+    legacy_status: SearchJobStatus
+    current_stage: Optional[str] = None
+    progress: int = 0
+    message: str = ""
+    error_message: Optional[str] = None
+    cancel_requested: bool = False
+
+    total_queries: int = 0
+    completed_queries: int = 0
+    failed_queries: int = 0
+    candidates_found: int = 0
+    candidates_deduplicated: int = 0
+    qualified_leads: int = 0
+    enrichment_attempted: int = 0
+    enrichment_completed: int = 0
+    emails_found: int = 0
+    phones_found: int = 0
+    errors_count: int = 0
+    lead_count: int = 0
+
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class PageMeta(BaseModel):
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    has_next: bool
+
+
+class LeadPageOut(BaseModel):
+    items: list[LeadOut]
+    page: PageMeta
+
+
+class CandidateOut(BaseModel):
+    id: int
+    name: Optional[str] = None
+    title: Optional[str] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    query_text: Optional[str] = None
+    status: str
+    relevance_score: float = 0.0
+    rejection_reason: Optional[str] = None
+    discovered_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CandidatePageOut(BaseModel):
+    items: list[CandidateOut]
+    page: PageMeta
+
+
+class SearchFunnelOut(BaseModel):
+    """The counts that must stay distinguishable.
+
+    Relevant leads include people with only a LinkedIn URL. Contactable is the
+    subset that also has an email — it is not a gate on appearing in results.
+    """
+
+    candidates_found: int = 0
+    relevant_leads: int = 0
+    linkedin_leads: int = 0
+    enriched_leads: int = 0
+    contactable_leads: int = 0
+    phoneable_leads: int = 0
+    rejections: dict[str, int] = Field(default_factory=dict)
+    query_outcomes: dict[str, int] = Field(default_factory=dict)
 
 
 class EmailJobOut(BaseModel):

@@ -5,9 +5,9 @@ from typing import Any
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from backend.database import SessionLocal
 from backend.lead_finder import search_leads
 from backend.models import LeadRecord, SearchJob, SearchJobStatus, User
+from backend.observability import new_trace_id
 from backend.services.lead_enrichment import to_full_lead
 from backend.services.pipeline import enrich_leads
 
@@ -46,39 +46,17 @@ def create_search_job(
         prompt=prompt,
         filters=filters,
         linkedin_url=None,
-        status=SearchJobStatus.RUNNING,
+        status=SearchJobStatus.PENDING,
         progress=1,
-        message="Starting a 2-minute public search…",
+        message="Queued — discovery is starting…",
         owner_id=user.id,
         organization_id=organization_id,
+        trace_id=new_trace_id(),
     )
     db.add(job)
     db.commit()
     db.refresh(job)
     return job
-
-
-def execute_search_job(job_id: int) -> None:
-    db = SessionLocal()
-    try:
-        job = db.get(SearchJob, job_id)
-        if not job:
-            return
-        user = db.get(User, job.owner_id)
-        if not user:
-            _set_status(db, job, SearchJobStatus.FAILED, "Search owner was not found.")
-            return
-        run_search(db, user=user, job=job)
-    except Exception as exc:
-        try:
-            job = db.get(SearchJob, job_id)
-            if job:
-                job.progress = 100
-                _set_status(db, job, SearchJobStatus.FAILED, str(exc))
-        except Exception:
-            pass
-    finally:
-        db.close()
 
 
 def run_search(
