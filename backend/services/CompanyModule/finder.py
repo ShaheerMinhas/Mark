@@ -37,9 +37,17 @@ _GENERIC = {
 _TITLEISH = re.compile(
     r"(?i)\b(manager|director|officer|engineer|president|specialist|coordinator|"
     r"head of|vice president|\bvp\b|cmo|ceo|cfo|cto|cgo|brand strategy|"
-    r"co-?owner|chairman|award-winning)\b"
+    r"co-?owner|chairman|award-winning|professor|lecturer|dean|faculty|"
+    r"registrar|instructor)\b"
 )
 _PRODUCTISH = re.compile(r"(?i)\b(robot|robots|youtuber|educator|packaging|pro)\b")
+#: Long university / school names are real employers; the 4-word heuristic below
+#: used to wipe "University of Management and Technology" to empty and tank
+#: education searches (company blank → wrong matches, weak qualification).
+_EDUCATION_ORG = re.compile(
+    r"(?i)\b(university|universit(?:y|ät)|college|institute|school|academy|"
+    r"polytechnic|nuces|nust|lums|umt|ucp|\buet\b|fast)\b"
+)
 
 
 def is_usable_company(name: str) -> bool:
@@ -52,12 +60,16 @@ def is_usable_company(name: str) -> bool:
         return False
     if re.search(r"(?i)^(award-winning|building|helping|i revenue|& |host of|accelerating)\b", cleaned):
         return False
-    if _TITLEISH.search(cleaned):
+    if _TITLEISH.search(cleaned) and not _EDUCATION_ORG.search(cleaned):
         return False
     if _PRODUCTISH.search(cleaned) and not re.search(r"\b(Inc\.?|LLC|Ltd\.?|Corp\.?)\b", cleaned, re.I):
         return False
     words = re.findall(r"[a-z0-9]+", cleaned.lower())
-    if len(words) >= 4 and not re.search(r"\b(inc|llc|ltd|corp|company|energy|solar|group)\b", cleaned, re.I):
+    if (
+        len(words) >= 4
+        and not re.search(r"\b(inc|llc|ltd|corp|company|energy|solar|group)\b", cleaned, re.I)
+        and not _EDUCATION_ORG.search(cleaned)
+    ):
         return False
     return True
 

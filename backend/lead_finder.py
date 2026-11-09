@@ -151,17 +151,28 @@ _ROLE_WORDS = {
     "marketer",
     "cgo",
     "chair",
+    "professor",
+    "lecturer",
+    "dean",
+    "faculty",
+    "registrar",
+    "chairman",
+    "instructor",
+    "researcher",
+    "fellow",
 }
 
 # High-confidence job titles used before "at <Company>"
 _JOB_TITLE_RE = (
     r"(?:Co-?Founder|Founder|Co-?Owner|CEO|CTO|CMO|CFO|COO|CGO|Owner|President|Director|"
     r"Managing Director|General Manager|"
-    r"(?:Principal |Principle |Senior |Staff |Lead |Junior )?"
+    r"(?:Principal |Principle |Senior |Staff |Lead |Junior |Assistant |Associate |Tenured )?"
     r"(?:Software |Data |Platform |DevOps |IT |Enterprise )?"
-    r"(?:Engineer|Developer|Designer|Consultant|Analyst|Architect|Specialist|Manager)|"
+    r"(?:Engineer|Developer|Designer|Consultant|Analyst|Architect|Specialist|Manager|"
+    r"Professor|Lecturer|Dean|Registrar|Instructor|Researcher|Fellow)|"
     r"Marketing Manager|Marketing Director|Brand Manager|Product Manager|Sales Manager|Project Manager|"
     r"Head of Marketing|Head of Growth|Head of Communications|"
+    r"Head of Department|Vice Chancellor|Controller of Examinations|"
     r"Marketer|Solar Marketer|"
     r"Growth Lead|Head of [A-Za-z& ]{2,30}|"
     r"VP(?:[\s\-–]+(?:of\s+)?[A-Za-z][\w&.''\-]*(?:\s+[A-Za-z][\w&.''\-]*){0,6})?|"
@@ -476,7 +487,13 @@ def _clean_company(raw: str, *, name: str = "") -> str:
         company = company.split(" · ", 1)[0].strip()
     company = re.split(r"\s+[–—]\s+", company)[0].strip()
     company = re.split(r"\s+\|\s+", company)[0].strip()
-    company = re.sub(r"(?:,\s*)?(?:Houston|Austin|Dallas|Texas|California|Florida|USA|United States)\s*$", "", company, flags=re.I).strip(" ,")
+    company = re.sub(
+        r"(?:,\s*)?(?:Houston|Austin|Dallas|Texas|California|Florida|USA|"
+        r"United States|Pakistan|India)\s*$",
+        "",
+        company,
+        flags=re.I,
+    ).strip(" ,")
     company = re.sub(r"(?i)^(?:at|@)\s+", "", company).strip()
     if "..." in company:
         company = company.split("...")[0].strip()
@@ -501,7 +518,10 @@ def _clean_company(raw: str, *, name: str = "") -> str:
     if name and lower == name.lower():
         return ""
     words = re.split(r"\s+", lower)
-    if words[0] in _AT_STOPWORDS:
+    # "university"/"college" are stopwords so bare "at University" is rejected,
+    # but "University of Management and Technology" is a real employer.
+    _edu_head = words[0] in {"university", "college", "school", "institute"} and len(words) >= 2
+    if words[0] in _AT_STOPWORDS and not _edu_head:
         return ""
     # A trailing preposition means the match stopped mid-phrase ("EMEA hos").
     if len(words) > 1 and words[-1] in _AT_STOPWORDS:
@@ -517,7 +537,13 @@ def _clean_company(raw: str, *, name: str = "") -> str:
         return ""
     if re.search(r"\b(who|which|where|that|with|from|about|looking|based)\b", lower):
         return ""
-    if _FOREIGN_ONLY.search(company):
+    # _FOREIGN_ONLY includes "lahore"/"pakistan" for US-only marketing searches;
+    # do not wipe real universities that legitimately mention those places.
+    _edu = re.search(
+        r"(?i)\b(university|college|institute|school|nust|lums|umt|ucp|uet|fast|nuces)\b",
+        company,
+    )
+    if _FOREIGN_ONLY.search(company) and not _edu:
         return ""
     if not is_usable_company(company):
         return ""
@@ -554,12 +580,16 @@ def _company_from_snippet(body: str, *, name: str = "") -> str:
     if not body:
         return ""
     patterns = [
+        # "Experience: University of Management and Technology - UMT"
+        r"(?i)Experience:\s*((?:University|College|Institute|School)[^·|\n]{2,70})",
         r"(?i)Experience:\s*([^·|\n]{2,60})",
         rf"(?i)Experience[:\s]+{_JOB_TITLE_RE}\s+(?:at|@)\s*([^·|\n]+)",
         rf"(?i)\b{_JOB_TITLE_RE}\s+(?:at|@)\s*([^·|\n]+)",
         # LinkedIn renders experience as "Role. Employer. Mar 2024 - Present",
         # with no "at" to anchor on.
         rf"(?i)\b{_JOB_TITLE_RE}\s*[.·]\s*([{_NAME_UPPER}][^.·|\n]{{2,60}}?)\s*[.·]",
+        # "Associate Professor, UMT, Pakistan" / "Professor at UMT Lahore"
+        r"(?i)\b(?:Professor|Lecturer|Dean|Faculty)\b[^·|\n]{0,40}?\b(?:at|,)\s*((?:UMT|NUST|LUMS|UET|UCP|FAST|NUCES)[^·|\n,]{0,40})",
         r"^([A-Z][^·|\n]{2,50}(?:,?\s+(?:LLC|Inc\.?|Ltd\.?|Corp\.?)))\b",
         r"([A-Z][\w&.''\-]*(?:\s+(?:&|and|[A-Z][\w&.''\-]*)){0,4})\s*[·|]\s*(?:Full-?time|Part-?time|Contract)\b",
     ]
@@ -641,11 +671,15 @@ def _parse_linkedin_title(title: str, body: str = "") -> tuple[str, str, str]:
             if right:
                 role, company = (role or left), right
             else:
-                maybe_company = _clean_company(rest, name=name)
-                if maybe_company:
-                    company = maybe_company
-                elif not role and _looks_like_role(rest):
+                # Prefer treating bare "Associate Professor" as a role, not an employer.
+                if not role and _looks_like_role(rest):
                     role = rest
+                else:
+                    maybe_company = _clean_company(rest, name=name)
+                    if maybe_company and not _looks_like_role(rest):
+                        company = maybe_company
+                    elif not role and _looks_like_role(rest):
+                        role = rest
 
     role = _clean_role(role)
     company = _clean_company(company, name=name)
@@ -901,6 +935,15 @@ def _hit_matches_titles(title: str, body: str, job_titles: list[str], *, prompt:
     return False
 
 
+#: When the user asks for Pakistan (or a Pakistani city), these cues mean the
+#: SERP hit is a name collision abroad — NUST Namibia, UMT Montana, CUP India.
+_PAKISTAN_COLLISION = re.compile(
+    r"(?i)\b(namibia|windhoek|nust\.na|university of montana|\bmso\.umt\.edu\b|"
+    r"missoula|central university of punjab|cup\.edu\.in|bathinda|"
+    r"greater jaipur|jaunpur)\b"
+)
+
+
 def _hit_matches_location(
     title: str,
     body: str,
@@ -924,6 +967,15 @@ def _hit_matches_location(
         return False
     wanted = [item.lower() for item in _as_list(location)]
     hay = f"{title} {body} {parsed_location} {company}".lower()
+    # Pakistan / city searches: reject known foreign lookalikes even if the
+    # word "Pakistan" appears elsewhere in a noisy snippet.
+    pakistan_wanted = any(
+        term in {"pakistan", "lahore", "islamabad", "karachi", "faisalabad",
+                 "rawalpindi", "multan", "peshawar", "gujranwala"}
+        for term in wanted
+    ) or bool(re.search(r"(?i)\bpakistan\b", prompt or ""))
+    if pakistan_wanted and _PAKISTAN_COLLISION.search(hay):
+        return False
     return any(term in hay for term in wanted)
 
 
@@ -1189,7 +1241,7 @@ def search_leads(
     job_titles = _as_list(job_titles)
     companies = _as_list(company)
     industries = _as_list(industry)
-    max_results = max(10, min(int(max_results or 1000), 2000))
+    max_results = max(10, min(int(max_results or 2000), 5000))
 
     if not prompt or not prompt.strip():
         return {"leads": [], "query_used": "", "count": 0, "message": "Enter a marketing prompt."}

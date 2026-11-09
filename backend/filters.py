@@ -102,5 +102,18 @@ FILTER_DEFINITIONS = {
     },
     "active_only": {"label": "Active LinkedIn users only", "type": "boolean", "default": True},
     "business_only": {"label": "Business-associated only", "type": "boolean", "default": True},
-    "max_results": {"label": "Max results", "type": "number", "min": 10, "max": 2000, "default": 1000},
+    "max_results": {
+        "label": "People to find",
+        "type": "number",
+        "min": 10,
+        "max": 10000,
+        "default": 2000,
+        "presets": [100, 250, 500, 1000, 2500, 5000, 10000],
+    },
+    "enrichment_mode": {
+        "label": "Email enrichment",
+        "type": "select",
+        "default": "after_discovery",
+        "options": ["after_discovery", "selected", "auto"],
+    },
 }

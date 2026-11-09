@@ -35,6 +35,7 @@ from backend.models import CandidateStatus, SearchCandidate
 from backend.services.CompanyModule.finder import is_usable_company
 from backend.services.discovery.queries import (
     _extend_unique,
+    expand_company,
     expand_geography,
     expand_industry,
 )
@@ -47,6 +48,7 @@ class RejectionReason:
     TITLE_MISMATCH = "title_mismatch"
     NO_COMPANY = "no_usable_company"
     BELOW_SCORE = "below_minimum_score"
+    FOREIGN_COLLISION = "foreign_name_collision"
 
 
 # Hard gates disqualify outright: the user named a company we did not match, the
@@ -64,6 +66,10 @@ INACTIVE_PENALTY = 0.05
 #: Enrichment resolves the employer later, so rank these down instead of dropping
 #: them — on live searches this gate alone discarded ~40% of the candidate pool.
 NO_COMPANY_PENALTY = 0.12
+#: When the user named an employer, a clear match should rise; a miss should drop
+#: but not delete — missing company parse is common on SERP snippets.
+COMPANY_MATCH_BONUS = 0.10
+COMPANY_MISS_PENALTY = 0.08
 
 #: Rank floor after hard gates. Title already matched; sector/location only
 #: move the person up or down the list instead of deleting them. Live pools were
@@ -73,6 +79,13 @@ DEFAULT_MIN_SCORE = 0.22
 #: Soft signals must not stack into a hard reject. Two misses used to subtract
 #: 0.33 and dump a correct title below the cut.
 MAX_SOFT_PENALTY = 0.22
+
+#: SERP hits for Pakistani universities that are actually foreign namesakes.
+_FOREIGN_COLLISION = re.compile(
+    r"(?i)\b(namibia|windhoek|nust\.na|university of montana|\bmso\.umt\.edu\b|"
+    r"missoula|central university of punjab|cup\.edu\.in|bathinda|"
+    r"greater jaipur|jaunpur)\b"
+)
 
 
 class Criteria:
@@ -85,6 +98,8 @@ class Criteria:
         self.industry = str(f.get("industry") or "")
         self.company = str(f.get("company") or "")
         self.companies = _as_list(self.company)
+        for named in list(self.companies):
+            self.companies = _extend_unique(self.companies, expand_company(named))
         self.industries = _as_list(self.industry)
         self.job_titles = _canonical_job_titles(_as_list(f.get("job_titles")), self.prompt)
         self.required_terms = _required_terms(
@@ -107,6 +122,18 @@ class Criteria:
         # every search, so its presence cannot signal that the user asked for it.
         self.require_company = bool(f.get("require_company", False))
         self.min_score = float(f.get("min_relevance_score") or DEFAULT_MIN_SCORE)
+        loc_l = self.location.lower()
+        self.guard_pakistan = bool(
+            re.search(r"(?i)\bpakistan\b", self.prompt)
+            or loc_l in {
+                "pakistan", "lahore", "islamabad", "karachi", "faisalabad",
+                "rawalpindi", "multan", "peshawar", "gujranwala",
+            }
+            or any(
+                re.search(r"(?i)\b(nust|lums|umt|ucp|fast|nuces|uet)\b", c)
+                for c in self.companies
+            )
+        )
 
 
 def _mentions_nearby_place(places: Sequence[str], *texts: str) -> bool:
@@ -125,6 +152,22 @@ def _mentions_nearby_place(places: Sequence[str], *texts: str) -> bool:
     )
 
 
+def _mentions_requested_company(companies: Sequence[str], *texts: str) -> bool:
+    """True when any named employer (or alias) appears in the candidate text."""
+    if not companies:
+        return False
+    haystack = " ".join(t for t in texts if t).lower()
+    if not haystack:
+        return False
+    for named in companies:
+        token = (named or "").strip().lower()
+        if len(token) < 2:
+            continue
+        if re.search(rf"\b{re.escape(token)}\b", haystack):
+            return True
+    return False
+
+
 def _evaluate(candidate: SearchCandidate, criteria: Criteria) -> tuple[bool, str | None, dict]:
     """Return ``(qualified, rejection_reason, filter_match)`` for one candidate."""
     person = candidate.name or ""
@@ -134,6 +177,7 @@ def _evaluate(candidate: SearchCandidate, criteria: Criteria) -> tuple[bool, str
     # The parsed fields are derived from the SERP title, so recombining them
     # reconstructs the text the title-side matchers originally saw.
     haystack_title = f"{person} {role} {company}".strip()
+    evidence = f"{haystack_title} {candidate.location or ''} {body}"
 
     matched: dict[str, Any] = {}
 
@@ -152,6 +196,15 @@ def _evaluate(candidate: SearchCandidate, criteria: Criteria) -> tuple[bool, str
     if criteria.require_company and not matched["usable_company"]:
         return False, RejectionReason.NO_COMPANY, matched
 
+    # Drop clear foreign namesakes (NUST Namibia, UMT Montana, CUP India) when
+    # the search is Pakistan / Pakistani-university scoped. Does not require a
+    # company parse — only rejects the collision itself.
+    matched["foreign_collision"] = bool(
+        criteria.guard_pakistan and _FOREIGN_COLLISION.search(evidence)
+    )
+    if matched["foreign_collision"]:
+        return False, RejectionReason.FOREIGN_COLLISION, matched
+
     # --- Soft signals -------------------------------------------------------
     activity, activity_boost = _activity_status(haystack_title, body)
     matched["activity_status"] = activity
@@ -168,6 +221,13 @@ def _evaluate(candidate: SearchCandidate, criteria: Criteria) -> tuple[bool, str
         company=company,
     ) or _mentions_nearby_place(
         criteria.nearby_places, candidate.location or "", haystack_title, body
+    )
+    matched["company_match"] = (
+        _mentions_requested_company(
+            criteria.companies, company, haystack_title, body, candidate.location or ""
+        )
+        if criteria.companies
+        else True
     )
     matched["role_focus"] = (
         bool(
@@ -194,6 +254,8 @@ def _evaluate(candidate: SearchCandidate, criteria: Criteria) -> tuple[bool, str
     soft = 0.0
     soft += SECTOR_MATCH_BONUS if matched["sector"] else -SECTOR_MISS_PENALTY
     soft += LOCATION_MATCH_BONUS if matched["location"] else -LOCATION_MISS_PENALTY
+    if criteria.companies:
+        soft += COMPANY_MATCH_BONUS if matched["company_match"] else -COMPANY_MISS_PENALTY
     if not matched["role_focus"]:
         soft -= ROLE_FOCUS_MISS_PENALTY
     if not matched["usable_company"]:
@@ -206,6 +268,30 @@ def _evaluate(candidate: SearchCandidate, criteria: Criteria) -> tuple[bool, str
 
     score = round(max(0.0, min(0.96, score)), 2)
     matched["relevance_score"] = score
+    # Separate evidence-based breakdown (person, company, title, location, identity, email).
+    title_match = 0.85 if matched["job_title"] and role else (0.55 if matched["job_title"] else 0.15)
+    if criteria.wants_marketing and not matched["role_focus"]:
+        title_match = max(0.2, title_match - 0.25)
+    company_rel = (
+        0.88
+        if (matched["usable_company"] and matched["sector"] and matched["company_match"])
+        else (0.68 if matched["usable_company"] and (matched["sector"] or matched["company_match"]) else (0.45 if matched["usable_company"] else 0.22))
+    )
+    loc_match = 0.9 if matched["location"] and candidate.location else (0.72 if matched["location"] else 0.3)
+    id_conf = (
+        0.92
+        if (candidate.linkedin_url and person and matched["usable_company"])
+        else (0.76 if candidate.linkedin_url and person else 0.45)
+    )
+    person_rel = round(min(0.94, max(0.2, (title_match * 0.55 + loc_match * 0.25 + (0.15 if matched["business_associated"] else 0.05)))), 2)
+    matched["scores"] = {
+        "person_relevance": person_rel,
+        "company_relevance": round(company_rel, 2),
+        "job_title_match": round(title_match, 2),
+        "location_match": round(loc_match, 2),
+        "identity_confidence": round(id_conf, 2),
+        "email_confidence": 0.0,
+    }
     if score < criteria.min_score:
         return False, RejectionReason.BELOW_SCORE, matched
 

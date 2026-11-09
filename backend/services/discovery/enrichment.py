@@ -326,22 +326,34 @@ def run_enrichment(db: Session, job: SearchJob, *, use_providers: bool = True) -
         if not need_net:
             continue
 
-        snapshots = [
-            {
-                "id": lead.id,
-                "search_id": job.id,
-                "name": lead.name or "",
-                "title": lead.work_designation or "",
-                "company": lead.company_name or "",
-                "location": lead.company_location or "",
-                "domain": lead.company_domain or "",
-                "linkedin": lead.linkedin_url or "",
-                "snippet": lead.raw_snippet or "",
-                "email": lead.email or "",
-                "phone": lead.phone or "",
-            }
-            for lead in need_net
-        ]
+        from backend.services.EmailModule.domain import resolve_known_domain
+
+        snapshots = []
+        domain_updated = False
+        for lead in need_net:
+            domain = (lead.company_domain or "").strip()
+            if not domain:
+                domain = resolve_known_domain(lead.company_name or "")
+                if domain:
+                    lead.company_domain = domain
+                    domain_updated = True
+            snapshots.append(
+                {
+                    "id": lead.id,
+                    "search_id": job.id,
+                    "name": lead.name or "",
+                    "title": lead.work_designation or "",
+                    "company": lead.company_name or "",
+                    "location": lead.company_location or "",
+                    "domain": domain,
+                    "linkedin": lead.linkedin_url or "",
+                    "snippet": lead.raw_snippet or "",
+                    "email": lead.email or "",
+                    "phone": lead.phone or "",
+                }
+            )
+        if domain_updated:
+            db.commit()
         by_id = {lead.id: lead for lead in need_net}
         allow_providers = use_providers and circuit.any_available()
 

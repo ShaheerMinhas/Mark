@@ -48,6 +48,10 @@ def _lead_from_candidate(job: SearchJob, candidate: SearchCandidate) -> LeadReco
     )
     email = base.get("email")
     phone = base.get("phone")
+    fm = dict(candidate.filter_match or {})
+    scores = dict(fm.get("scores") or {})
+    if email:
+        scores["email_confidence"] = 0.85
     return LeadRecord(
         search_job_id=job.id,
         candidate_id=candidate.id,
@@ -71,6 +75,7 @@ def _lead_from_candidate(job: SearchJob, candidate: SearchCandidate) -> LeadReco
         raw_snippet=candidate.raw_snippet,
         tags=base.get("tags") or [],
         enrichment_status=EnrichmentStatus.PENDING.value,
+        score_breakdown=scores or None,
     )
 
 

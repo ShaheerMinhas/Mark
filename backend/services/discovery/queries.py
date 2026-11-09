@@ -31,7 +31,7 @@ PROFILE_SITE = "site:linkedin.com/in"
 #: the main lever on discovery breadth. ~1000 qualified leads need a few thousand
 #: candidates, which needs this many distinct searches; results stream to the UI
 #: as they land, so the longer run is not a blocking wait.
-DEFAULT_MAX_QUERIES = 180
+DEFAULT_MAX_QUERIES = 320
 
 #: Seniority variants, used to widen a role without changing its function.
 SENIORITY_PREFIXES = (
@@ -168,7 +168,16 @@ COUNTRY_CITIES: dict[str, tuple[str, ...]] = {
     "australia": ("Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"),
     "new zealand": ("Auckland", "Wellington", "Christchurch"),
     "india": ("Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune", "Chennai", "Gurgaon"),
-    "pakistan": ("Karachi", "Lahore", "Islamabad"),
+    "pakistan": (
+        "Karachi",
+        "Lahore",
+        "Islamabad",
+        "Faisalabad",
+        "Rawalpindi",
+        "Multan",
+        "Peshawar",
+        "Gujranwala",
+    ),
     "singapore": ("Singapore",),
     "malaysia": ("Kuala Lumpur", "Penang", "Johor Bahru"),
     "indonesia": ("Jakarta", "Surabaya", "Bandung"),
@@ -286,6 +295,114 @@ def expand_geography(term: str, prompt: str = "") -> list[str]:
     cities = COUNTRY_CITIES.get(country, ())
     # Drop the place the user already asked for.
     return [city for city in cities if city.lower() != key]
+
+
+#: Named employers (esp. universities) that LinkedIn indexes under several strings.
+#: Expanding these multiplies discovery hits without loosening qualification.
+COMPANY_ALIASES: dict[str, tuple[str, ...]] = {
+    "nust": (
+        "NUST",
+        "National University of Sciences and Technology",
+        "NUST Islamabad",
+        "NUST SMME",
+        "NUST SEECS",
+        "NUST CEME",
+        "NUST SCEE",
+        "NUST NBS",
+    ),
+    "fast": (
+        "FAST",
+        "FAST NUCES",
+        "NUCES",
+        "National University of Computer and Emerging Sciences",
+        "FAST Islamabad",
+        "FAST Lahore",
+    ),
+    "lums": (
+        "LUMS",
+        "Lahore University of Management Sciences",
+        "LUMS Lahore",
+    ),
+    "uet": (
+        "UET",
+        "UET Lahore",
+        "University of Engineering and Technology",
+        "UET Taxila",
+    ),
+    "umt": (
+        "UMT",
+        "University of Management and Technology",
+        "UMT Lahore",
+    ),
+    "ucp": (
+        "UCP",
+        "University of Central Punjab",
+        "UCP Lahore",
+    ),
+    "comsats": (
+        "COMSATS",
+        "COMSATS University",
+        "COMSATS University Islamabad",
+        "CUI",
+        "COMSATS Lahore",
+    ),
+    "uaf": (
+        "UAF",
+        "University of Agriculture Faisalabad",
+        "University of Agriculture, Faisalabad",
+    ),
+    "gcuf": (
+        "GCUF",
+        "Government College University Faisalabad",
+    ),
+    "punjab university": (
+        "University of the Punjab",
+        "Punjab University",
+        "PU Lahore",
+    ),
+    "qau": (
+        "QAU",
+        "Quaid-i-Azam University",
+        "Quaid i Azam University Islamabad",
+    ),
+    "bahria university": (
+        "Bahria University",
+        "Bahria University Islamabad",
+        "Bahria University Lahore",
+    ),
+    "national university of sciences and technology": (
+        "NUST",
+        "NUST Islamabad",
+        "NUST SMME",
+        "NUST SEECS",
+    ),
+    "fast nuces": (
+        "FAST",
+        "NUCES",
+        "National University of Computer and Emerging Sciences",
+    ),
+    "lahore university of management sciences": ("LUMS",),
+    "university of engineering and technology": ("UET", "UET Lahore", "UET Taxila"),
+    "university of management and technology": ("UMT", "UMT Lahore"),
+    "university of central punjab": ("UCP",),
+    "comsats university": ("COMSATS", "CUI", "COMSATS University Islamabad"),
+    "university of agriculture faisalabad": ("UAF",),
+    "government college university faisalabad": ("GCUF",),
+    "university of the punjab": ("Punjab University", "PU Lahore"),
+    "quaid-i-azam university": ("QAU",),
+}
+
+
+def expand_company(term: str) -> list[str]:
+    """Alternate employer spellings for a named company filter."""
+    key = re.sub(r"\s+", " ", (term or "").strip().lower()).strip(" ,.")
+    if not key:
+        return []
+    aliases = COMPANY_ALIASES.get(key)
+    if not aliases:
+        return []
+    return [alias for alias in aliases if alias.lower() != key]
+
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z&/+-]{2,}")
 _PROMPT_STOPWORDS = {
@@ -431,6 +548,9 @@ def build_query_plan(
         locations,
         expand_geography(location or primary_location, prompt),
     )
+    # Named universities / employers often appear under several LinkedIn strings.
+    for named in list(companies):
+        companies = _extend_unique(companies, expand_company(named))
     # Industry-only searches used to stop after ~20 title/sector variants. Fan out
     # across major markets so the candidate pool can actually reach hundreds.
     if not locations and not location.strip():
@@ -493,12 +613,25 @@ def build_query_plan(
                     )
                 )
 
-    # Dimension 5 — named companies the user supplied.
-    for named in companies[:8]:
-        for title in titles[:2]:
+    # Dimension 5 — named companies the user supplied (plus aliases).
+    # Cross each employer into a few cities when geography is known so a
+    # "NUST + Pakistan" search actually hits Islamabad / Rawalpindi campuses.
+    company_locs = locations[:8] or ([primary_location] if primary_location else [""])
+    for named in companies[:12]:
+        for title in titles[:3]:
             specs.append(
                 QuerySpec(_compose(_quote(title), _quote(named)), "company", priority=1)
             )
+            for loc in company_locs[:6]:
+                if not loc:
+                    continue
+                specs.append(
+                    QuerySpec(
+                        _compose(_quote(title), _quote(named), _quote(loc)),
+                        "company",
+                        priority=1,
+                    )
+                )
 
     # Dimension 6 — prompt keywords not covered by a structured filter.
     for keyword in keywords[:6]:

@@ -77,11 +77,35 @@ SEARCH_CACHE_HOURS = max(0, int(os.getenv("MARK_SEARCH_CACHE_HOURS", "24")))
 # How many search queries run at once. Each slot is one independent client, so
 # twelve queries in flight are twelve DuckDuckGo/Google/Yahoo sessions, not one
 # session asked twelve times in a row.
-QUERY_PARALLELISM = max(1, min(24, int(os.getenv("MARK_QUERY_PARALLELISM", "12"))))
+QUERY_PARALLELISM = max(
+    1,
+    min(
+        24,
+        int(
+            os.getenv("SEARCH_MAX_CONCURRENCY")
+            or os.getenv("MARK_QUERY_PARALLELISM")
+            or "12"
+        ),
+    ),
+)
+SEARCH_MAX_CONCURRENCY = QUERY_PARALLELISM
 
 # Extra copies of each backend. Four Google clients can each wait their own
 # two seconds instead of sharing one throttle.
 ENGINE_REPLICAS = max(1, min(8, int(os.getenv("MARK_ENGINE_REPLICAS", "4"))))
 
 # Public-web email/phone lookups per enrichment batch. Independent of discovery.
-ENRICHMENT_PARALLELISM = max(1, min(24, int(os.getenv("MARK_ENRICHMENT_PARALLELISM", "16"))))
+ENRICHMENT_PARALLELISM = max(
+    1,
+    min(
+        24,
+        int(
+            os.getenv("ENRICHMENT_MAX_CONCURRENCY")
+            or os.getenv("MARK_ENRICHMENT_PARALLELISM")
+            or "16"
+        ),
+    ),
+)
+ENRICHMENT_MAX_CONCURRENCY = ENRICHMENT_PARALLELISM
+CRAWLER_MAX_CONCURRENCY = max(1, min(16, int(os.getenv("CRAWLER_MAX_CONCURRENCY", "5"))))
+BATCH_SIZE = max(25, min(1000, int(os.getenv("BATCH_SIZE", "250"))))

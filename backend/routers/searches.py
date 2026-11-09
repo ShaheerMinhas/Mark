@@ -9,6 +9,7 @@ from backend.database import get_db
 from backend.dependencies import get_current_user, require_org_access
 from backend.filters import FILTER_DEFINITIONS
 from backend.models import EmailEnrichmentJob, LeadRecord, SearchJob, SearchJobStatus, User
+from pydantic import BaseModel
 from backend.schemas import EmailJobOut, LeadOut, SearchCreate, SearchJobOut, SearchResultOut
 from backend.services.EmailModule.jobs import (
     latest_email_job,
@@ -59,7 +60,7 @@ def create_search(
 
     org_id = body.organization_id
     if org_id:
-        require_org_access(db, user, org_id)
+        require_org_access(db, user, org_id, allow_viewer=False)
 
     if not body.save_results:
         result = run_search(
@@ -209,6 +210,68 @@ def enrich_one_lead(
 
     enrich_lead_record(db, lead, use_providers=True, use_public_web=False)
     return LeadOut.model_validate(lead)
+
+
+class SearchRename(BaseModel):
+    name: str
+
+
+@router.patch("/searches/{search_id}", response_model=SearchJobOut)
+def rename_search(
+    search_id: int,
+    body: SearchRename,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(SearchJob).filter(SearchJob.id == search_id, SearchJob.owner_id == user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Search not found")
+    job.name = body.name.strip() or job.name
+    db.commit()
+    db.refresh(job)
+    return search_job_out(job)
+
+
+@router.delete("/searches/{search_id}")
+def delete_search(
+    search_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = db.query(SearchJob).filter(SearchJob.id == search_id, SearchJob.owner_id == user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Search not found")
+    db.delete(job)
+    db.commit()
+    return {"ok": True, "deleted_id": search_id}
+
+
+@router.post("/searches/{search_id}/duplicate", response_model=SearchResultOut)
+def duplicate_and_rerun_search(
+    search_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    src = db.query(SearchJob).filter(SearchJob.id == search_id, SearchJob.owner_id == user.id).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Search not found")
+    job = create_search_job(
+        db,
+        user=user,
+        name=f"{src.name} (rerun)",
+        prompt=src.prompt,
+        filters=dict(src.filters or {}),
+        organization_id=src.organization_id,
+    )
+    enqueue_discovery(db, job)
+    return SearchResultOut(
+        search=search_job_out(job),
+        leads=[],
+        query_used=job.query_used or "",
+        count=0,
+        message="Queued — discovery is starting…",
+        mode=job.mode,
+    )
 
 
 @router.get("/searches/{search_id}/export")
