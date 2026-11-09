@@ -45,7 +45,13 @@ def get_cached(db: Session, query_hash: str) -> list[dict[str, Any]] | None:
         db.delete(row)
         db.commit()
         return None
-    return list(row.hits or [])
+    hits = list(row.hits or [])
+    if "site:linkedin.com" in (row.query_text or "").lower():
+        if not any("linkedin.com" in str(h.get("href") or "").lower() for h in hits):
+            db.delete(row)
+            db.commit()
+            return None
+    return hits
 
 
 def store(
@@ -60,6 +66,10 @@ def store(
     zero-result response does not poison later searches."""
     if not enabled() or not query_hash or not hits:
         return
+    if "site:linkedin.com" in (query_text or "").lower():
+        hits = [h for h in hits if "linkedin.com" in str(h.get("href") or "").lower()]
+        if not hits:
+            return
     expires_at = datetime.utcnow() + timedelta(hours=SEARCH_CACHE_HOURS)
     existing = (
         db.query(SearchQueryCache)

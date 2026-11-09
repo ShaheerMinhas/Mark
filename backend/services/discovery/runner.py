@@ -41,7 +41,9 @@ from backend.services.discovery.store import CandidateWriter
 logger = logging.getLogger(__name__)
 
 #: Hits requested per query. A productive page earns a follow-up page.
-RESULTS_PER_QUERY = 20
+#: 25 keeps a 2,000-lead search inside a few hundred queries instead of stalling
+#: in the low hundreds after qualification.
+RESULTS_PER_QUERY = 25
 SECOND_PAGE_THRESHOLD = 8
 
 #: Pages to walk for a query that keeps producing. Stopping at page 2 left a lot
@@ -76,7 +78,7 @@ CANDIDATE_POOL_MULTIPLIER = 5
 MIN_CANDIDATE_POOL = 2500
 
 #: Ceiling, so one search cannot run away with the worker.
-MAX_CANDIDATE_POOL = 6000
+MAX_CANDIDATE_POOL = 15000
 
 
 def candidate_pool_target(filters: dict) -> int:
@@ -410,6 +412,7 @@ def run_discovery(db: Session, job: SearchJob, *, final_attempt: bool = True) ->
                     )
 
             stop = False
+            prev_known = writer.known_count
             for spec, response, from_cache in fetched:
                 if response.ok:
                     rate_limit_streak = 0
@@ -446,6 +449,17 @@ def run_discovery(db: Session, job: SearchJob, *, final_attempt: bool = True) ->
                     )
                     stop = True
                     break
+            if writer.known_count > prev_known and not job.cancel_requested:
+                qualify_candidates(
+                    db,
+                    search_job_id=job.id,
+                    prompt=job.prompt,
+                    filters=filters,
+                )
+                promoted_now = promote_qualified(db, job)
+                job.qualified_leads = promoted_now
+                job.message = f"{writer.known_count} candidates found · {promoted_now} relevant leads"
+                db.commit()
             if stop:
                 break
 
@@ -548,9 +562,11 @@ def _qualify_and_finish(db: Session, job: SearchJob, *, discovery_ms: int) -> No
         search_state.finish(db, job, SearchJobStatus.COMPLETED, message=summary)
 
     if promoted:
-        from backend.services.search_jobs import enqueue_enrichment
+        enrichment_mode = str((job.filters or {}).get("enrichment_mode") or "after_discovery").lower()
+        if enrichment_mode != "selected":
+            from backend.services.search_jobs import enqueue_enrichment
 
-        enqueue_enrichment(db, job)
+            enqueue_enrichment(db, job)
 
 
 def qualified_candidate_query(db: Session, search_job_id: int):

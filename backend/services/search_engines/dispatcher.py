@@ -43,7 +43,12 @@ class EngineDispatcher:
         return [e for e in self._engines if not health.is_blocked(e.name)]
 
     def _ordered_for_next_query(self) -> list[Any]:
-        """Healthy engines, rotated so consecutive queries use different ones."""
+        """Healthy engines, interleaved by backend so replicas do not burn the budget.
+
+        Email lookups cap ``max_attempts``. If we only walked google#0 then
+        google#1, both EMPTY, we never reached yahoo — which often still has
+        hits. Interleaving by backend name fixes that without raising the cap.
+        """
         if not self._engines:
             return []
         with self._lock:
@@ -55,7 +60,23 @@ class EngineDispatcher:
         # reporting a failure we have not actually observed.
         if not healthy:
             return [min(rotated, key=lambda e: health.retry_after(e.name))]
-        return healthy
+
+        buckets: dict[str, list[Any]] = {}
+        order: list[str] = []
+        for engine in healthy:
+            backend = getattr(engine, "backend", None) or engine.name.split(":", 1)[-1].split("#", 1)[0]
+            if backend not in buckets:
+                buckets[backend] = []
+                order.append(backend)
+            buckets[backend].append(engine)
+
+        interleaved: list[Any] = []
+        while any(buckets.values()):
+            for backend in order:
+                bucket = buckets.get(backend) or []
+                if bucket:
+                    interleaved.append(bucket.pop(0))
+        return interleaved
 
     def search(
         self,
@@ -144,9 +165,16 @@ def email_search_text(
     page: int = 1,
     ddgs: Any | None = None,
 ) -> SearchResponse:
-    """Email harvest: independent pool, stop after two engines so a miss is cheap."""
+    """Email harvest: independent pool; try each backend once before giving up.
+
+    Cap stays small so enrichment does not waterfall through every replica, but
+    it must cover distinct backends (google/duckduckgo/yahoo) — otherwise an
+    EMPTY google replica pair never reaches yahoo.
+    """
+    backends = {getattr(e, "backend", e.name) for e in email_dispatcher.engines}
+    attempts = max(3, len(backends))
     return email_dispatcher.search(
-        query, max_results=max_results, page=page, max_attempts=2
+        query, max_results=max_results, page=page, max_attempts=attempts
     )
 
 

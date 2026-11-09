@@ -90,11 +90,16 @@ class LinkedInSessionOut(BaseModel):
 
 class SearchFilters(BaseModel):
     location: str = ""
+    country: str = ""
+    state_region: str = ""
+    city: str = ""
     industry: str = ""
     company: str = ""
     company_location: str = ""
     interests: list[str] = Field(default_factory=list)
     job_titles: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
     company_size: str = ""
     income_level: str = ""
     gender: str = ""
@@ -102,11 +107,16 @@ class SearchFilters(BaseModel):
     age_min: Optional[int] = Field(default=25, ge=13, le=100)
     age_max: Optional[int] = Field(default=45, ge=13, le=100)
     language: str = ""
-    max_results: int = Field(default=1000, ge=10, le=2000)
+    max_results: int = Field(default=2000, ge=10, le=10000)
     active_only: bool = True
     business_only: bool = True
+    #: Email enrichment timing: "selected" (default), "after_discovery", "auto"
+    enrichment_mode: str = "after_discovery"
+    max_api_credits: Optional[int] = None
+    max_external_requests: Optional[int] = None
+    max_duration_seconds: Optional[int] = None
 
-    @field_validator("job_titles", "interests", mode="before")
+    @field_validator("job_titles", "interests", "keywords", "technologies", mode="before")
     @classmethod
     def split_list_fields(cls, value: Any) -> list[str]:
         return _csv_list(value)
@@ -147,6 +157,17 @@ class LeadOut(BaseModel):
     email_verification: Optional[dict[str, Any]] = None
     email_verified_at: Optional[datetime] = None
     email_enriched_at: Optional[datetime] = None
+    crm_stage: str = "new"
+    crm_notes: Optional[str] = None
+    lead_status: str = "new"
+    priority: str = "medium"
+    assigned_user_id: Optional[int] = None
+    follow_up_date: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
+    score_breakdown: Optional[dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -221,6 +242,35 @@ class PageMeta(BaseModel):
 class LeadPageOut(BaseModel):
     items: list[LeadOut]
     page: PageMeta
+
+
+class PeopleItem(LeadOut):
+    search_id: int
+    search_name: str = ""
+
+
+class PeoplePageOut(BaseModel):
+    items: list[PeopleItem]
+    page: PageMeta
+    stage_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class PeopleUpdate(BaseModel):
+    crm_stage: Optional[str] = None
+    crm_notes: Optional[str] = None
+    lead_status: Optional[str] = None
+    priority: Optional[str] = None
+    assigned_user_id: Optional[int] = None
+    follow_up_date: Optional[datetime] = None
+    archived: Optional[bool] = None
+    tags: Optional[list[str]] = None
+    custom_fields: Optional[dict[str, Any]] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    work_designation: Optional[str] = None
+    company_name: Optional[str] = None
+    personal_location: Optional[str] = None
 
 
 class CandidateOut(BaseModel):

@@ -234,6 +234,23 @@ class TestDispatcherFallback:
         assert response.outcome == SearchOutcome.EMPTY
         assert a.calls == 1 and b.calls == 1 and c.calls == 0
 
+    def test_replicas_of_one_backend_do_not_starve_other_backends(self):
+        """Empty google replicas must not burn the email attempt budget alone."""
+
+        class BackendStub(StubEngine):
+            def __init__(self, name, backend, responses):
+                super().__init__(name, responses)
+                self.backend = backend
+
+        g0 = BackendStub("google#0", "google", [SearchResponse(SearchOutcome.EMPTY)])
+        g1 = BackendStub("google#1", "google", [SearchResponse(SearchOutcome.EMPTY)])
+        y0 = BackendStub("yahoo#0", "yahoo", [ok(engine="yahoo")])
+        response = EngineDispatcher([g0, g1, y0]).search("q", max_attempts=2)
+        assert response.ok
+        assert response.engine == "yahoo#0"
+        assert g0.calls == 1 and y0.calls == 1
+        assert g1.calls == 0
+
     def test_every_engine_empty_is_reported_as_empty_not_failure(self):
         d = EngineDispatcher(
             [

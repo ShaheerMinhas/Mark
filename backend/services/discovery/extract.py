@@ -12,6 +12,7 @@ from typing import Any
 from backend.lead_finder import (
     _company_from_snippet,
     _location_from_snippet,
+    _looks_like_role,
     _parse_linkedin_title,
     _role_from_snippet,
 )
@@ -44,6 +45,11 @@ def extract_candidate(hit: dict[str, Any]) -> ExtractedCandidate | None:
     name, role, company = _parse_linkedin_title(serp_title, body)
     if not name:
         return None
+    # Title parsers occasionally stash the job title in ``company`` when the SERP
+    # line is only "Name - Associate Professor". Recover the real employer from
+    # the snippet instead of keeping a role string as the company.
+    if company and _looks_like_role(company) and not role:
+        role, company = company, ""
     if not role:
         role = _role_from_snippet(body)
     if not company:

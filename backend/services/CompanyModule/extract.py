@@ -53,6 +53,14 @@ def _clean_location(raw: str) -> str:
         return ""
     if re.search(r"https?://|www\.", loc, re.I):
         return ""
+    # SERP paste-ups like "Pakistan Jersey City, New Jersey, United States".
+    countries = re.findall(
+        r"(?i)\b(pakistan|india|united states|usa|canada|namibia|australia|"
+        r"united kingdom|\buk\b|germany|china|brazil)\b",
+        loc,
+    )
+    if len({c.lower() for c in countries}) >= 2:
+        return ""
     return loc
 
 

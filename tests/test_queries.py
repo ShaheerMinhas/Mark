@@ -5,6 +5,8 @@ from __future__ import annotations
 from backend.services.discovery.queries import (
     DEFAULT_MAX_QUERIES,
     build_query_plan,
+    expand_company,
+    expand_geography,
     prompt_keywords,
     second_page,
 )
@@ -107,3 +109,29 @@ def test_second_page_keeps_the_query_but_changes_the_hash():
     assert follow_up.text == first.text
     assert follow_up.page == 2
     assert follow_up.hash != first.hash
+
+
+def test_pakistan_expands_to_major_cities():
+    cities = expand_geography("Pakistan")
+    assert "Lahore" in cities
+    assert "Islamabad" in cities
+    assert "Faisalabad" in cities
+
+
+def test_university_company_aliases_expand_query_plan():
+    aliases = expand_company("NUST")
+    assert any("Sciences and Technology" in alias for alias in aliases)
+
+    specs = plan(
+        prompt="Professors at NUST Islamabad Pakistan",
+        filters={
+            "job_titles": ["Professor", "Associate Professor"],
+            "location": "Pakistan",
+            "industry": "education",
+            "company": "NUST",
+        },
+    )
+    texts = " ".join(spec.text for spec in specs)
+    assert "NUST" in texts
+    assert "Islamabad" in texts or "Lahore" in texts
+    assert any(spec.dimension == "company" for spec in specs)

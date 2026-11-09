@@ -29,7 +29,26 @@ class AccountType(str, enum.Enum):
 class OrgRole(str, enum.Enum):
     OWNER = "owner"
     ADMIN = "admin"
+    MANAGER = "manager"
     MEMBER = "member"
+    VIEWER = "viewer"
+
+
+LEAD_LIFECYCLE_STAGES = (
+    "new",
+    "unreviewed",
+    "qualified",
+    "contacted",
+    "interested",
+    "not_interested",
+    "converted",
+    "disqualified",
+    "archived",
+    # legacy stages preserved so existing rows & callers keep working
+    "meeting",
+    "won",
+    "lost",
+)
 
 
 class SearchJobStatus(str, enum.Enum):
@@ -286,6 +305,20 @@ class LeadRecord(Base):
     enrichment_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enrichment_locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    #: CRM pipeline. Independent of discovery status.
+    crm_stage: Mapped[str] = mapped_column(String(32), default="new")
+    crm_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    #: Mark 2.0 lead management & evidence-based sub-scores.
+    lead_status: Mapped[str] = mapped_column(String(32), default="new")
+    priority: Mapped[str] = mapped_column(String(16), default="medium")
+    assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    follow_up_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    custom_fields: Mapped[dict] = mapped_column(JSON, default=dict)
+    score_breakdown: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
     search_job: Mapped[SearchJob] = relationship(back_populates="leads")
     candidate: Mapped[SearchCandidate | None] = relationship(back_populates="lead")
 
@@ -481,3 +514,176 @@ class EmailEnrichmentJob(Base):
     not_found: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LeadNote(Base):
+    __tablename__ = "lead_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("lead_records.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LeadTask(Base):
+    __tablename__ = "lead_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("lead_records.id"), index=True)
+    assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(255))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LeadActivity(Base):
+    __tablename__ = "lead_activities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("lead_records.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(64))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CrmContact(Base):
+    """Selective CRM database — distinct from discovered LeadRecord rows."""
+
+    __tablename__ = "crm_contacts"
+    __table_args__ = (
+        Index("ix_crm_contacts_owner", "owner_id", "organization_id"),
+        Index("ix_crm_contacts_identity", "owner_id", "organization_id", "identity_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("lead_records.id"), nullable=True, index=True)
+    identity_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    email_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    stage: Mapped[str] = mapped_column(String(32), default="new")
+    priority: Mapped[str] = mapped_column(String(16), default="medium")
+    assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    custom_fields: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CrmGroup(Base):
+    """Nested CRM groups and subgroups (static or dynamic/smart)."""
+
+    __tablename__ = "crm_groups"
+    __table_args__ = (
+        Index("ix_crm_groups_owner", "owner_id", "organization_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("crm_groups.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), default="static")  # static | smart
+    smart_rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    permissions: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CrmGroupMembership(Base):
+    __tablename__ = "crm_group_memberships"
+    __table_args__ = (
+        UniqueConstraint("group_id", "contact_id", name="uq_crm_group_contact"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("crm_groups.id"), index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("crm_contacts.id"), index=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CrmExportRecord(Base):
+    __tablename__ = "crm_exports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(32))  # crm_transfer | csv | xml | json | external_crm
+    destination: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selected_count: Mapped[int] = mapped_column(Integer, default=0)
+    transferred_count: Mapped[int] = mapped_column(Integer, default=0)
+    with_email_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    field_mapping: Mapped[dict] = mapped_column(JSON, default=dict)
+    warnings: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SavedFilterPreset(Base):
+    __tablename__ = "saved_filter_presets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255))
+    scope: Mapped[str] = mapped_column(String(32), default="leads")  # leads | search | crm
+    filters: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255))
+    trigger: Mapped[str] = mapped_column(String(64))  # email_verified | search_completed
+    conditions: Mapped[dict] = mapped_column(JSON, default=dict)
+    actions: Mapped[dict] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+

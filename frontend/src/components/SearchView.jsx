@@ -274,11 +274,16 @@ export default function SearchView({ prefill, onClearPrefill }) {
   return (
     <section className="view search-view">
       <div className="search-main">
-        <h2>New lead search</h2>
-        <p className="lede">
-          No LinkedIn login required. Mark searches public profiles in the background and shows
-          leads as it finds them — you don't have to wait for the whole run.
-        </p>
+        <div className="view-head">
+          <div>
+            <p className="app-kicker">Prospect</p>
+            <h2>Find people</h2>
+            <p className="lede">
+              Each search is sized for up to 2,000 people. Results stream in while Mark is still searching.
+            </p>
+          </div>
+          <span className="volume-pill">Target 2,000</span>
+        </div>
         <section className="search-results-col" aria-live="polite">
           {showResults ? (
             <>

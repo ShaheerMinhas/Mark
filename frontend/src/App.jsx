@@ -6,6 +6,9 @@ import Layout from "./components/Layout.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import SearchView from "./components/SearchView.jsx";
 import OrganizationView from "./components/OrganizationView.jsx";
+import PeopleView from "./components/PeopleView.jsx";
+import CrmView from "./components/CrmView.jsx";
+import PlatformView from "./components/PlatformView.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -72,7 +75,10 @@ export default function App() {
           onClearPrefill={() => setSearchPrefill(null)}
         />
       )}
+      {view === "people" && <PeopleView />}
+      {view === "crm" && <CrmView />}
       {view === "org" && <OrganizationView />}
+      {view === "platform" && <PlatformView />}
     </Layout>
   );
 }

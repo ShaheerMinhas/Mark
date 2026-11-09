@@ -21,14 +21,22 @@ _MAX_PAGE_BYTES = 250_000
 
 def _search_queries(name: str, company: str, domain: str) -> list[str]:
     queries: list[str] = []
+    host = (domain or "").strip().lower().removeprefix("www.")
     if name and company:
         queries.append(f'"{name}" "{company}" email')
         queries.append(f'"{name}" "{company}" contact')
-    if name and domain:
-        queries.append(f'"{name}" "@{domain}"')
+    if name and host:
+        queries.append(f'"{name}" "@{host}"')
+        queries.append(f'"{name}" site:{host}')
+        queries.append(f'"{name}" email site:{host}')
+        # Faculty pages often list the address next to the name without quotes.
+        if host.endswith(".edu.pk") or host.endswith(".edu"):
+            queries.append(f"{name} @{host} faculty")
     if name:
         queries.append(f'"{name}" email')
-    return list(dict.fromkeys(queries))[:3]
+    # Prefer domain-targeted queries; keep a hard cap so enrichment stays cheap.
+    limit = 5 if host.endswith((".edu.pk", ".edu", ".ac.uk")) else 3
+    return list(dict.fromkeys(queries))[:limit]
 
 
 def _fetch_text(url: str) -> str:

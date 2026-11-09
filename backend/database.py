@@ -94,6 +94,16 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("enrichment_error", "VARCHAR(255)"),
         ("enrichment_locked_until", "DATETIME"),
         ("phone_source", "VARCHAR(64)"),
+        ("crm_stage", "VARCHAR(32) DEFAULT 'new'"),
+        ("crm_notes", "TEXT"),
+        ("lead_status", "VARCHAR(32) DEFAULT 'new'"),
+        ("priority", "VARCHAR(16) DEFAULT 'medium'"),
+        ("assigned_user_id", "INTEGER"),
+        ("follow_up_date", "DATETIME"),
+        ("archived_at", "DATETIME"),
+        ("custom_fields", "JSON"),
+        ("score_breakdown", "JSON"),
+        ("updated_at", "DATETIME"),
     ),
 }
 

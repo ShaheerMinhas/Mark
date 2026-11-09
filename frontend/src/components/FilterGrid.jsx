@@ -97,15 +97,32 @@ export default function FilterGrid({ filterDefs, values, onChange }) {
               </>
             )}
             {def.type === "number" && (
-              <input
-                id={`f-${key}`}
-                type="number"
-                min={def.min}
-                max={def.max}
-                placeholder={def.placeholder}
-                value={values[key] ?? def.default ?? ""}
-                onChange={(e) => setValue(key, e.target.value === "" ? "" : Number(e.target.value))}
-              />
+              <>
+                {Array.isArray(def.presets) && (
+                  <select
+                    aria-label={`${def.label} preset`}
+                    value={def.presets.includes(Number(values[key] ?? def.default)) ? String(values[key] ?? def.default) : "__custom__"}
+                    onChange={(e) => {
+                      if (e.target.value !== "__custom__") setValue(key, Number(e.target.value));
+                    }}
+                    style={{ marginBottom: "0.35rem" }}
+                  >
+                    {def.presets.map((n) => (
+                      <option key={n} value={n}>{n.toLocaleString()} leads</option>
+                    ))}
+                    <option value="__custom__">Custom target…</option>
+                  </select>
+                )}
+                <input
+                  id={`f-${key}`}
+                  type="number"
+                  min={def.min}
+                  max={def.max}
+                  placeholder={def.placeholder}
+                  value={values[key] ?? def.default ?? ""}
+                  onChange={(e) => setValue(key, e.target.value === "" ? "" : Number(e.target.value))}
+                />
+              </>
             )}
           </div>
         );

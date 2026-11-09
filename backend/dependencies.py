@@ -38,7 +38,13 @@ def get_optional_user(
     return db.query(User).filter(User.id == int(payload["sub"]), User.is_active.is_(True)).first()
 
 
-def require_org_access(db: Session, user: User, org_id: int, admin_only: bool = False) -> OrganizationMember:
+def require_org_access(
+    db: Session,
+    user: User,
+    org_id: int,
+    admin_only: bool = False,
+    allow_viewer: bool = True,
+) -> OrganizationMember:
     membership = (
         db.query(OrganizationMember)
         .filter(
@@ -51,4 +57,6 @@ def require_org_access(db: Session, user: User, org_id: int, admin_only: bool = 
         raise HTTPException(status_code=403, detail="Not a member of this organization")
     if admin_only and membership.role not in {OrgRole.OWNER, OrgRole.ADMIN}:
         raise HTTPException(status_code=403, detail="Admin access required")
+    if not allow_viewer and membership.role == OrgRole.VIEWER:
+        raise HTTPException(status_code=403, detail="Viewer role has read-only access")
     return membership

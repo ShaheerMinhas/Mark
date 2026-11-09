@@ -178,8 +178,27 @@ class TestCompanyGarbageRejection:
             "HARIBO",
             # A place name inside a longer company name must survive.
             "Europe RPET Certified LLC",
+            # Universities used to be wiped by the 4-word / foreign-geo heuristics.
+            "University of Management and Technology",
+            "Lahore University of Management Sciences",
+            "NUST",
+            "UET Lahore",
         ):
             assert _clean_company(good, name="x") == good, good
+
+    def test_university_experience_snippet_keeps_employer(self):
+        candidate = extract_candidate(
+            hit(
+                "Amber Sultan - Associate Professor | LinkedIn",
+                body=(
+                    "Associate Professor at University of Management and Technology - UMT · "
+                    "Experience: University of Management and Technology - UMT · Location: Lahore"
+                ),
+                slug="amber-sultan",
+            )
+        )
+        assert candidate is not None
+        assert "Management and Technology" in (candidate.company or "")
 
     def test_sentence_tail_is_trimmed(self):
         from backend.lead_finder import _trim_company_tail

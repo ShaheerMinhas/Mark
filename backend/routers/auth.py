@@ -9,6 +9,7 @@ from backend.auth_utils import create_access_token, hash_password, verify_passwo
 from backend.database import get_db
 from backend.dependencies import get_current_user
 from backend.models import AccountType, Organization, OrganizationMember, OrgRole, User
+from pydantic import BaseModel
 from backend.schemas import OrgMembershipOut, TokenResponse, UserCreate, UserLogin, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -92,6 +93,32 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token, user=_user_out(db, user))
 
 
+class ProfileUpdate(BaseModel):
+    full_name: str | None = None
+    password: str | None = None
+    current_password: str | None = None
+
+
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return _user_out(db, user)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    body: ProfileUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if body.full_name and body.full_name.strip():
+        user.full_name = body.full_name.strip()
+    if body.password:
+        if len(body.password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        if body.current_password and not verify_password(body.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        user.hashed_password = hash_password(body.password)
+    db.commit()
+    db.refresh(user)
+    return _user_out(db, user)
+
