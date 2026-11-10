@@ -1,14 +1,11 @@
-const STAGES = [
-  { key: "discovery", label: "Discover" },
-  { key: "qualification", label: "Qualify" },
-  { key: "enrichment", label: "Enrich" },
-];
-
-const STAGE_FOR_STATUS = {
-  pending: null,
-  discovering: "discovery",
-  filtering: "qualification",
-  enriching: "enrichment",
+const EMAIL_CHIP = {
+  off: "Off",
+  waiting: "Waiting",
+  active: "Looking",
+  done: "Done",
+  skipped: "Skipped",
+  failed: "Failed",
+  stopped: "Stopped",
 };
 
 function plural(count, one, many) {
@@ -16,10 +13,26 @@ function plural(count, one, many) {
 }
 
 /**
- * Renders only values reported by the backend. There is no time-based estimate:
- * a stalled search looks stalled rather than appearing to progress.
+ * One progress story for a search run. The percent and the email state come from
+ * the backend. There is no time-based estimate and no percent when nothing has
+ * been measured yet.
  */
-export default function SearchProgress({ progress = 0, message = "", status, stage, counters }) {
+export default function SearchProgress({ run, counters }) {
+  const email = run?.email_lookup;
+  const stages = run?.stages || [];
+  const determinate = Boolean(run?.determinate) && run?.percent != null;
+  const percent = determinate ? Math.max(0, Math.min(100, Number(run.percent))) : null;
+  const active = Boolean(run?.active);
+  const outcome = run?.stage || "";
+  const tone =
+    outcome === "failed" || email?.state === "failed"
+      ? "is-failed"
+      : outcome === "cancelled" || email?.state === "stopped"
+        ? "is-stopped"
+        : active
+          ? "is-active"
+          : "is-settled";
+
   const {
     total_queries: totalQueries = 0,
     completed_queries: completedQueries = 0,
@@ -27,84 +40,61 @@ export default function SearchProgress({ progress = 0, message = "", status, sta
     candidates_found: candidatesFound = 0,
     candidates_deduplicated: duplicates = 0,
     qualified_leads: qualifiedLeads = 0,
-    emails_found: emailsFound = 0,
-    phones_found: phonesFound = 0,
   } = counters || {};
-
-  const pct = Math.max(0, Math.min(100, Number(progress) || 0));
-  const activeStage = stage || STAGE_FOR_STATUS[status] || null;
-  const activeIndex = STAGES.findIndex((item) => item.key === activeStage);
   const queriesDone = completedQueries + failedQueries;
 
   return (
     <div
-      className="search-progress"
+      className={`search-progress ${tone}`}
       role="progressbar"
       aria-label="Search progress"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(pct)}
+      aria-valuenow={determinate ? Math.round(percent) : undefined}
+      aria-busy={active}
     >
       <div className="search-progress-top">
         <div>
-          <p className="search-progress-kicker">Public search</p>
-          <h3 className="search-progress-title">
-            {candidatesFound > 0
-              ? `${plural(candidatesFound, "candidate", "candidates")} found`
-              : "Searching public profiles…"}
-          </h3>
+          <p className="search-progress-kicker">{active ? "Search in progress" : "Search status"}</p>
+          <h3 className="search-progress-title">{run?.stage_label || "Waiting for search status"}</h3>
         </div>
-        {totalQueries > 0 ? (
-          <div className="search-progress-clock" aria-label="Queries completed">
-            <span>
-              {queriesDone}/{totalQueries}
-            </span>
-            <small>queries</small>
-          </div>
-        ) : null}
+        <div className="search-progress-clock" aria-label={determinate ? "Progress" : "Progress not available yet"}>
+          <span>{determinate ? `${Math.round(percent)}%` : "—"}</span>
+        </div>
       </div>
 
-      <div className="search-progress-track">
-        <div className="search-progress-fill" style={{ width: `${pct}%` }} />
+      <div className={`search-progress-track ${determinate ? "" : "is-indeterminate"}`}>
+        <div
+          className="search-progress-fill"
+          style={determinate ? { width: `${percent}%` } : undefined}
+        />
       </div>
 
-      <div className="search-progress-meta">
-        <p className="search-progress-stage">{message || "Queued — discovery is starting…"}</p>
-        <p className="search-progress-found">
-          {qualifiedLeads > 0 ? `${plural(qualifiedLeads, "relevant lead", "relevant leads")}` : ""}
-          {emailsFound > 0 ? ` · ${emailsFound} emails` : ""}
-          {phonesFound > 0 ? ` · ${phonesFound} phones` : ""}
-        </p>
-      </div>
+      <p className="search-progress-stage">{run?.message || "Waiting for this search to report what it is doing."}</p>
 
-      <ol className="search-progress-phases">
-        {STAGES.map((item, index) => (
-          <li
-            key={item.key}
-            className={
-              activeIndex < 0
-                ? ""
-                : index < activeIndex
-                  ? "is-done"
-                  : index === activeIndex
-                    ? "is-active"
-                    : ""
-            }
-          >
-            {item.label}
-          </li>
-        ))}
-      </ol>
-
-      {duplicates > 0 || failedQueries > 0 ? (
-        <p className="search-progress-note">
-          {duplicates > 0 ? `${duplicates} duplicates removed` : ""}
-          {duplicates > 0 && failedQueries > 0 ? " · " : ""}
-          {failedQueries > 0
-            ? `${plural(failedQueries, "query", "queries")} failed — continuing with the rest`
-            : ""}
-        </p>
+      {stages.length ? (
+        <ol className="search-progress-phases">
+          {stages.map((item) => (
+            <li key={item.key} className={`is-${item.state || "pending"}`}>
+              <span>{item.label}</span>
+              {item.key === "email" ? (
+                <small>{EMAIL_CHIP[item.state] || item.state}</small>
+              ) : null}
+            </li>
+          ))}
+        </ol>
       ) : null}
+
+      <p className="search-progress-found">
+        {totalQueries > 0 ? `${queriesDone}/${totalQueries} queries` : "Queries not planned yet"}
+        {candidatesFound > 0 ? ` · ${plural(candidatesFound, "candidate", "candidates")}` : ""}
+        {qualifiedLeads > 0 ? ` · ${plural(qualifiedLeads, "relevant lead", "relevant leads")}` : ""}
+        {duplicates > 0 ? ` · ${duplicates} duplicates removed` : ""}
+        {failedQueries > 0
+          ? ` · ${plural(failedQueries, "query failed", "queries failed")}`
+          : ""}
+      </p>
     </div>
   );
 }
+

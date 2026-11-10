@@ -11,13 +11,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from backend.database import (
-    Base,
-    _column_ddl,
-    _ensure_columns,
-    _ensure_indexes,
-    _normalize_search_job_statuses,
-)
+from backend.database import _column_ddl, upgrade_database
 
 # The search_jobs / lead_records shape as it existed before this refactor.
 OLD_SCHEMA = (
@@ -84,10 +78,7 @@ def legacy_engine(tmp_path: Path):
 
 
 def upgrade(engine) -> None:
-    Base.metadata.create_all(bind=engine)
-    _normalize_search_job_statuses(engine)
-    _ensure_columns(engine)
-    _ensure_indexes(engine)
+    upgrade_database(engine)
 
 
 def test_new_columns_are_added_to_existing_tables(legacy_engine):
@@ -188,6 +179,18 @@ def test_legacy_null_identity_keys_do_not_break_the_unique_index(legacy_engine):
             text("INSERT INTO lead_records (id, search_job_id, name) VALUES (3, 1, 'Lena Berg')")
         )
         assert conn.execute(text("SELECT COUNT(*) FROM lead_records")).scalar() == 3
+
+
+def test_a_private_lead_is_not_copied_into_the_shared_cache(legacy_engine):
+    upgrade(legacy_engine)
+
+    with legacy_engine.connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM global_people")).scalar() == 0
+        assert conn.execute(text("SELECT name, email FROM lead_records WHERE id = 1")).one() == (
+            "Anna Lind",
+            "anna@example.com",
+        )
+        assert conn.execute(text("SELECT COUNT(*) FROM schema_migrations")).scalar() >= 1
 
 
 def test_datetime_ddl_is_translated_for_postgres():

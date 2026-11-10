@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from backend.auth_utils import decode_access_token
+from backend.auth_utils import ADMIN_AUDIENCE, CUSTOMER_AUDIENCE, decode_access_token
 from backend.database import get_db
 from backend.models import OrganizationMember, OrgRole, User
 
@@ -17,9 +17,9 @@ def get_current_user(
 ) -> User:
     if not creds or not creds.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    payload = decode_access_token(creds.credentials)
+    payload = decode_access_token(creds.credentials, audience=CUSTOMER_AUDIENCE)
     if not payload or "sub" not in payload:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Customer session required")
     user = db.query(User).filter(User.id == int(payload["sub"]), User.is_active.is_(True)).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -32,10 +32,35 @@ def get_optional_user(
 ) -> User | None:
     if not creds or not creds.credentials:
         return None
-    payload = decode_access_token(creds.credentials)
+    payload = decode_access_token(creds.credentials, audience=CUSTOMER_AUDIENCE)
     if not payload or "sub" not in payload:
         return None
     return db.query(User).filter(User.id == int(payload["sub"]), User.is_active.is_(True)).first()
+
+
+def get_current_admin(
+    creds: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """Operator session. A customer token is not an admin session, even for the same account."""
+    if not creds or not creds.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin session required")
+    payload = decode_access_token(creds.credentials, audience=ADMIN_AUDIENCE)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin session required")
+    user = db.query(User).filter(User.id == int(payload["sub"]), User.is_active.is_(True)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin session required")
+    if int(payload.get("ver") or 0) != int(user.admin_token_version or 0):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin session required")
+    if not user.is_platform_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin required")
+    return user
+
+
+def require_platform_admin(user: User = Depends(get_current_admin)) -> User:
+    """Platform operator. Owning a workspace does not grant this."""
+    return user
 
 
 def require_org_access(

@@ -10,10 +10,14 @@ Never pass API keys, tokens, passwords or full contact details through here.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import Any
 
 _SENSITIVE = ("key", "token", "password", "secret", "cookie", "authorization")
+_SECRET_VALUE = re.compile(
+    r"(?i)(api[_-]?key|bearer|secret|token|password)\s*[:=]\s*\S+|sk-[A-Za-z0-9-]{8,}|eyJ[A-Za-z0-9_-]{12,}"
+)
 
 
 def new_trace_id() -> str:
@@ -27,6 +31,8 @@ def _is_sensitive(name: str) -> bool:
 
 def _render(value: Any) -> str:
     text = str(value)
+    if _SECRET_VALUE.search(text):
+        return "[redacted]"
     if any(ch in text for ch in " \t\"="):
         escaped = text.replace('"', '\\"')
         return f'"{escaped}"'

@@ -17,6 +17,7 @@ const NAV = [
 
 export default function Layout({ view, setView, children }) {
   const { user, logout } = useAuth();
+  const nav = NAV;
 
   return (
     <div className={`app-shell screen${view === "search" ? " screen--search" : ""}`}>
@@ -29,7 +30,7 @@ export default function Layout({ view, setView, children }) {
           </span>
         </div>
         <nav className="app-nav" aria-label="Main">
-          {NAV.map((section) => (
+          {nav.map((section) => (
             <div key={section.group} className="app-nav-group">
               <p className="app-nav-label">{section.group}</p>
               {section.items.map((item) => (

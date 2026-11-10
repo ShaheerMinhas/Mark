@@ -250,9 +250,11 @@ def _sync_counters(db: Session, job: SearchJob) -> None:
         .filter(LeadRecord.search_job_id == job.id, LeadRecord.phone.isnot(None))
         .count()
     )
+    checked = int(job.enrichment_completed or 0)
+    target = int(job.qualified_leads or 0)
     job.message = (
-        f"{job.qualified_leads} relevant leads · "
-        f"{job.emails_found} emails · {job.phones_found} phones so far"
+        f"Looking up emails · checked {checked} of {target} people"
+        f" · {int(job.emails_found or 0)} with an email"
     )
 
 
@@ -285,10 +287,11 @@ def run_enrichment(db: Session, job: SearchJob, *, use_providers: bool = True) -
     """Enrich the persisted leads of one search."""
     started = time.monotonic()
     previous_status = job.status
-    previous_message = job.message
 
     job.status = SearchJobStatus.ENRICHING
     job.current_stage = "enrichment"
+    target = int(job.qualified_leads or 0)
+    job.message = f"Looking up emails for {target} {'person' if target == 1 else 'people'}"
     db.commit()
 
     circuit = ProviderCircuit()
@@ -296,8 +299,14 @@ def run_enrichment(db: Session, job: SearchJob, *, use_providers: bool = True) -
     emails = 0
     rate_limited = 0
     workers = max(1, ENRICHMENT_PARALLELISM)
+    stopped = False
 
     while True:
+        try:
+            search_state.check_cancelled(db, job)
+        except search_state.SearchCancelled:
+            stopped = True
+            break
         batch = pending_leads(db, job.id)
         if not batch:
             break
@@ -431,22 +440,29 @@ def run_enrichment(db: Session, job: SearchJob, *, use_providers: bool = True) -
                     _heartbeat(db, job)
 
     # Enrichment never changes the discovery verdict; restore it.
+    _sync_counters(db, job)
     job.status = (
         previous_status
         if previous_status in (SearchJobStatus.COMPLETED, SearchJobStatus.PARTIALLY_COMPLETED)
         else SearchJobStatus.COMPLETED
     )
     job.current_stage = None
-    job.progress = 100
     job.completed_at = job.completed_at or datetime.utcnow()
-    parts = [f"{job.qualified_leads} relevant leads"]
-    if job.emails_found:
-        parts.append(f"{job.emails_found} emails")
-    if job.phones_found:
-        parts.append(f"{job.phones_found} phones")
-    job.message = " · ".join(parts) if len(parts) > 1 else (
-        previous_message or parts[0]
-    )
+    if stopped:
+        job.progress = min(int(job.progress or 0), 99)
+        job.message = (
+            f"Email lookup stopped · checked {int(job.enrichment_completed or 0)} of "
+            f"{int(job.qualified_leads or 0)} people"
+        )
+    else:
+        job.progress = 100
+        found = int(job.emails_found or 0)
+        job.message = (
+            f"Email lookup finished · {int(job.qualified_leads or 0)} relevant leads · "
+            f"{found} with an email"
+        )
+        if int(job.phones_found or 0):
+            job.message += f" · {int(job.phones_found or 0)} with a phone"
     db.commit()
 
     log_event(

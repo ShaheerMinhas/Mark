@@ -55,6 +55,35 @@ def _column_ddl(ddl: str, bind=None) -> str:
 
 
 _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "users": (
+        ("is_platform_admin", "BOOLEAN DEFAULT FALSE"),
+        ("admin_token_version", "INTEGER DEFAULT 0"),
+    ),
+    "discovery_settings": (
+        ("max_runs_per_hour", "INTEGER DEFAULT 4"),
+        ("max_runs_per_day", "INTEGER DEFAULT 24"),
+        ("pause_enrichment", "BOOLEAN DEFAULT 1"),
+        ("pause_email", "BOOLEAN DEFAULT 1"),
+        ("pause_verify", "BOOLEAN DEFAULT 1"),
+        ("allow_public_search", "BOOLEAN DEFAULT 0"),
+        ("retention_days", "INTEGER"),
+        ("store_name_only", "BOOLEAN DEFAULT 1"),
+        ("serve_name_only", "BOOLEAN DEFAULT 1"),
+    ),
+    "provider_usage": (
+        ("scope", "VARCHAR(16)"),
+        ("reservation_id", "INTEGER"),
+    ),
+    "global_people": (
+        ("archived_at", "DATETIME"),
+        ("correction_note", "TEXT"),
+        ("canonical_key", "VARCHAR(255)"),
+        ("contact_note", "TEXT"),
+    ),
+    "global_companies": (
+        ("archived_at", "DATETIME"),
+        ("correction_note", "TEXT"),
+    ),
     "search_jobs": (
         ("progress", "INTEGER DEFAULT 0"),
         ("current_stage", "VARCHAR(64)"),
@@ -74,6 +103,7 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("emails_found", "INTEGER DEFAULT 0"),
         ("phones_found", "INTEGER DEFAULT 0"),
         ("errors_count", "INTEGER DEFAULT 0"),
+        ("cache_served", "INTEGER DEFAULT 0"),
     ),
     "lead_records": (
         ("company_domain", "VARCHAR(255)"),
@@ -104,6 +134,13 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("custom_fields", "JSON"),
         ("score_breakdown", "JSON"),
         ("updated_at", "DATETIME"),
+        ("replaced_at", "DATETIME"),
+    ),
+    "discovery_targets": (
+        ("criteria", "JSON"),
+        ("rotation_cursor", "INTEGER DEFAULT 0"),
+        ("autonomous", "BOOLEAN DEFAULT 0"),
+        ("last_query", "TEXT"),
     ),
 }
 
@@ -169,13 +206,27 @@ def _ensure_indexes(bind=None) -> None:
                 )
 
 
+def upgrade_database(bind=None) -> None:
+    """Bring a fresh or already-populated database up to the current schema.
+
+    Safe to run more than once. Does not copy private leads into the shared cache.
+    """
+    from backend import models  # noqa: F401
+
+    bind = bind or engine
+    Base.metadata.create_all(bind=bind)
+    _normalize_search_job_statuses(bind)
+    _ensure_columns(bind)
+    _ensure_indexes(bind)
+    from backend.migrations import apply_migrations
+
+    apply_migrations(bind)
+
+
 def init_db():
     from backend import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-    _normalize_search_job_statuses()
-    _ensure_columns()
-    _ensure_indexes()
+    upgrade_database(engine)
     try:
         from backend.services.dbwiki import refresh_dbwiki
 

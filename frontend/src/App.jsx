@@ -9,6 +9,7 @@ import OrganizationView from "./components/OrganizationView.jsx";
 import PeopleView from "./components/PeopleView.jsx";
 import CrmView from "./components/CrmView.jsx";
 import PlatformView from "./components/PlatformView.jsx";
+import AdminApp from "./components/AdminApp.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -24,6 +25,10 @@ export default function App() {
     }
     prevView.current = view;
   }, [view]);
+
+  if (window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/")) {
+    return <AdminApp />;
+  }
 
   if (loading) {
     return (

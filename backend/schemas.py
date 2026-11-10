@@ -45,6 +45,7 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     account_type: AccountType
+    is_platform_admin: bool = False
     organizations: list["OrgMembershipOut"] = []
 
     model_config = {"from_attributes": True}
@@ -196,8 +197,43 @@ class SearchJobOut(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    #: List label when email lookup is still queued after discovery has finished.
+    activity_label: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class EmailLookupOut(BaseModel):
+    """Whether this search is looking up emails, and how far that pass got."""
+
+    enabled: bool = False
+    mode: str = "after_discovery"
+    state: str = "not_requested"
+    source: str = "none"
+    reason: str = ""
+    processed: int = 0
+    total: int = 0
+    found: int = 0
+    detail: str = ""
+
+
+class RunStageOut(BaseModel):
+    key: str
+    label: str
+    state: str
+
+
+class SearchRunOut(BaseModel):
+    """One progress story for discovery, qualification, and email lookup."""
+
+    active: bool = False
+    stage: str = ""
+    stage_label: str = ""
+    message: str = ""
+    percent: Optional[int] = None
+    determinate: bool = False
+    email_lookup: EmailLookupOut = Field(default_factory=EmailLookupOut)
+    stages: list[RunStageOut] = Field(default_factory=list)
 
 
 class SearchProgressOut(BaseModel):
@@ -212,6 +248,7 @@ class SearchProgressOut(BaseModel):
     message: str = ""
     error_message: Optional[str] = None
     cancel_requested: bool = False
+    run: Optional[SearchRunOut] = None
 
     total_queries: int = 0
     completed_queries: int = 0
@@ -253,6 +290,10 @@ class PeoplePageOut(BaseModel):
     items: list[PeopleItem]
     page: PageMeta
     stage_counts: dict[str, int] = Field(default_factory=dict)
+    #: Counts for the current non-email filters, so email chips stay comparable.
+    email_counts: dict[str, int] = Field(default_factory=dict)
+    #: Leads in this view before text, stage, company, and email filters.
+    library_total: int = 0
 
 
 class PeopleUpdate(BaseModel):

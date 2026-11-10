@@ -120,6 +120,7 @@ class QueryRunStatus(str, enum.Enum):
 class JobType(str, enum.Enum):
     SEARCH_DISCOVERY = "search_discovery"
     SEARCH_ENRICHMENT = "search_enrichment"
+    DISCOVERY_PIPELINE = "discovery_pipeline"
 
 
 class QueuedJobStatus(str, enum.Enum):
@@ -142,6 +143,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     account_type: Mapped[AccountType] = mapped_column(Enum(AccountType), default=AccountType.INDIVIDUAL)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Platform operator. Never granted by registration or by owning a workspace.
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    admin_token_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     memberships: Mapped[list[OrganizationMember]] = relationship(back_populates="user")
@@ -238,6 +242,8 @@ class SearchJob(Base):
     emails_found: Mapped[int] = mapped_column(Integer, default=0)
     phones_found: Mapped[int] = mapped_column(Integer, default=0)
     errors_count: Mapped[int] = mapped_column(Integer, default=0)
+    #: People copied from the shared public cache into this search. Not a second lead model.
+    cache_served: Mapped[int] = mapped_column(Integer, default=0)
 
     owner: Mapped[User] = relationship(back_populates="searches")
     organization: Mapped[Organization | None] = relationship(back_populates="searches")
@@ -265,6 +271,7 @@ class LeadRecord(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     search_job_id: Mapped[int] = mapped_column(ForeignKey("search_jobs.id"), index=True)
+    replaced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -480,6 +487,8 @@ class ProviderUsage(Base):
     operation: Mapped[str] = mapped_column(String(32))
     success: Mapped[bool] = mapped_column(Boolean, default=False)
     credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    reservation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     search_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -675,6 +684,512 @@ class AuditLog(Base):
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SchemaMigration(Base):
+    """Applied schema versions. ``create_all`` does not record these."""
+
+    __tablename__ = "schema_migrations"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    applied_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GlobalCompany(Base):
+    """Shared company evidence. Not a workspace account and not a CRM company."""
+
+    __tablename__ = "global_companies"
+    __table_args__ = (
+        Index("ix_global_companies_name", "name_normalized"),
+        Index("ix_global_companies_country", "country_code"),
+        Index("ix_global_companies_industry", "industry"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    name_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    subindustry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    provider_ids: Mapped[dict] = mapped_column(JSON, default=dict)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_refresh_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    correction_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class GlobalPerson(Base):
+    """Shared public prospect. Workspace notes, tags, and CRM stay on ``lead_records``."""
+
+    __tablename__ = "global_people"
+    __table_args__ = (
+        Index("ix_global_people_country", "country_code"),
+        Index("ix_global_people_industry", "industry"),
+        Index("ix_global_people_domain", "domain"),
+        Index("ix_global_people_email_status", "email_status"),
+        Index("ix_global_people_seniority", "seniority"),
+        Index("ix_global_people_function", "job_function"),
+        Index("ix_global_people_tier_updated", "quality_tier", "updated_at"),
+        Index("ix_global_people_name", "name_normalized"),
+        Index("ix_global_people_profile", "profile_url_normalized"),
+        Index("ix_global_people_canonical", "canonical_key"),
+        Index("ix_global_people_email", "email"),
+        Index("ix_global_people_phone", "phone"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    given_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    family_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    name_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    job_function: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seniority: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("global_companies.id"), nullable=True, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    subindustry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    profile_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    profile_url_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    canonical_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    contact_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quality_score: Mapped[float] = mapped_column(Float, default=0.0)
+    quality_tier: Mapped[str] = mapped_column(String(32), default="basic")
+    discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_refresh_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    correction_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    company: Mapped[GlobalCompany | None] = relationship()
+
+
+class GlobalPersonTechnology(Base):
+    __tablename__ = "global_person_technologies"
+    __table_args__ = (
+        Index("uq_global_person_tech", "person_id", "technology", unique=True),
+        Index("ix_global_person_tech_name", "technology"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("global_people.id"), index=True)
+    technology: Mapped[str] = mapped_column(String(64))
+
+
+class GlobalEvidence(Base):
+    """Provenance for one field. Ineligible rows are stored but never served."""
+
+    __tablename__ = "global_evidence"
+    __table_args__ = (
+        Index("ix_global_evidence_subject", "subject_type", "subject_id"),
+        Index("ix_global_evidence_provider", "provider"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject_type: Mapped[str] = mapped_column(String(16))
+    subject_id: Mapped[int] = mapped_column(Integer)
+    field_name: Mapped[str] = mapped_column(String(64))
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_record_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    share_scope: Mapped[str] = mapped_column(String(32), default="public")
+    eligible: Mapped[bool] = mapped_column(Boolean, default=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GlobalIdentityKey(Base):
+    __tablename__ = "global_identity_keys"
+    __table_args__ = (
+        Index("uq_global_identity_key", "kind", "key_value", unique=True),
+        Index("ix_global_identity_subject", "subject_type", "subject_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    key_value: Mapped[str] = mapped_column(String(255))
+    subject_type: Mapped[str] = mapped_column(String(16))
+    subject_id: Mapped[int] = mapped_column(Integer)
+
+
+class SuppressionEntry(Base):
+    """Identities the shared cache must not store or serve."""
+
+    __tablename__ = "suppression_entries"
+    __table_args__ = (
+        Index("uq_suppression_kind_value", "kind", "normalized_value", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    normalized_value: Mapped[str] = mapped_column(String(255))
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoverySettings(Base):
+    """One row. Discovery and paid calls default off."""
+
+    __tablename__ = "discovery_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    live_public_search_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    paid_providers_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    pause_enrichment: Mapped[bool] = mapped_column(Boolean, default=True)
+    pause_email: Mapped[bool] = mapped_column(Boolean, default=True)
+    pause_verify: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_public_search: Mapped[bool] = mapped_column(Boolean, default=False)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
+    max_runs_per_tick: Mapped[int] = mapped_column(Integer, default=5)
+    max_runs_per_hour: Mapped[int] = mapped_column(Integer, default=4)
+    max_runs_per_day: Mapped[int] = mapped_column(Integer, default=24)
+    store_name_only: Mapped[bool] = mapped_column(Boolean, default=True)
+    serve_name_only: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryTarget(Base):
+    """Saved crawl target. Scheduling state is not the same thing as cancelling a run."""
+
+    __tablename__ = "discovery_targets"
+    __table_args__ = (Index("ix_discovery_targets_due", "scheduling_status", "next_run_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    #: active | paused | stopped. Stopped means no new runs. Queued runs stay.
+    scheduling_status: Mapped[str] = mapped_column(String(32), default="paused")
+    #: interval | daily | weekdays
+    schedule_type: Mapped[str] = mapped_column(String(32), default="daily")
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hour: Mapped[int] = mapped_column(Integer, default=6)
+    minute: Mapped[int] = mapped_column(Integer, default=0)
+    max_people_per_run: Mapped[int] = mapped_column(Integer, default=25)
+    max_queries_per_run: Mapped[int] = mapped_column(Integer, default=5)
+    refresh_hours: Mapped[int] = mapped_column(Integer, default=168)
+    countries: Mapped[list] = mapped_column(JSON, default=list)
+    industries: Mapped[list] = mapped_column(JSON, default=list)
+    titles: Mapped[list] = mapped_column(JSON, default=list)
+    criteria: Mapped[dict] = mapped_column(JSON, default=dict)
+    autonomous: Mapped[bool] = mapped_column(Boolean, default=False)
+    rotation_cursor: Mapped[int] = mapped_column(Integer, default=0)
+    last_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryRun(Base):
+    __tablename__ = "discovery_runs"
+    __table_args__ = (
+        Index("uq_discovery_run_idempotency", "idempotency_key", unique=True),
+        Index("ix_discovery_runs_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("discovery_targets.id"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    people_limit: Mapped[int] = mapped_column(Integer, default=25)
+    query_limit: Mapped[int] = mapped_column(Integer, default=5)
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    queue_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryStageAttempt(Base):
+    __tablename__ = "discovery_stage_attempts"
+    __table_args__ = (Index("ix_discovery_stage_run", "run_id", "stage"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("discovery_runs.id"), index=True)
+    stage: Mapped[str] = mapped_column(String(64))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DiscoveryCategory(Base):
+    """Editable label catalogue. A technology name is not a connected service."""
+
+    __tablename__ = "discovery_categories"
+    __table_args__ = (Index("uq_discovery_category", "kind", "normalized", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(128))
+    normalized: Mapped[str] = mapped_column(String(128))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class DiscoveryFieldRule(Base):
+    """How a field is required. Enrichment source is stored and not applied yet."""
+
+    __tablename__ = "discovery_field_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    field_name: Mapped[str] = mapped_column(String(64), unique=True)
+    collection_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    requirement: Mapped[str] = mapped_column(String(16), default="optional")
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    refresh_hours: Mapped[int] = mapped_column(Integer, default=168)
+    enrichment_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verification_required: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DiscoveryProvider(Base):
+    """A global-cache adapter. Disabled until an operator turns it on. Customer keys are not stored here."""
+
+    __tablename__ = "discovery_providers"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    rate_per_hour: Mapped[int] = mapped_column(Integer, default=0)
+    supports_email_find: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_email_verify: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_company: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryProviderSecret(Base):
+    """Platform credential for global jobs. The API never returns this value."""
+
+    __tablename__ = "discovery_provider_secrets"
+
+    provider_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryProviderPrice(Base):
+    """Operator-approved maximum cost of one call, in integer minor units. Zero is not a price."""
+
+    __tablename__ = "discovery_provider_prices"
+    __table_args__ = (Index("uq_discovery_provider_price", "provider_name", "operation", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider_name: Mapped[str] = mapped_column(String(64), index=True)
+    operation: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(3))
+    max_cost_minor: Mapped[int] = mapped_column(Integer)
+    unit: Mapped[str] = mapped_column(String(16), default="call")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryBudget(Base):
+    """Hard spending cap. Amounts are integers. There is no implied free tier."""
+
+    __tablename__ = "discovery_budgets"
+    __table_args__ = (
+        Index("uq_discovery_budget", "scope", "provider_name", "period", "currency", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(16))
+    provider_name: Mapped[str] = mapped_column(String(64), default="")
+    period: Mapped[str] = mapped_column(String(16))
+    currency: Mapped[str] = mapped_column(String(3))
+    limit_minor: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryBudgetPeriod(Base):
+    """Reserved, settled, and unknown holds for one budget window."""
+
+    __tablename__ = "discovery_budget_periods"
+    __table_args__ = (Index("uq_discovery_budget_period", "budget_id", "period_start", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    budget_id: Mapped[int] = mapped_column(ForeignKey("discovery_budgets.id"), index=True)
+    period_start: Mapped[str] = mapped_column(String(10))
+    reserved_minor: Mapped[int] = mapped_column(Integer, default=0)
+    settled_minor: Mapped[int] = mapped_column(Integer, default=0)
+    unknown_minor: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DiscoveryReservation(Base):
+    """One reserved maximum. Retries use a new key. Reconciliation is idempotent."""
+
+    __tablename__ = "discovery_reservations"
+    __table_args__ = (Index("ix_discovery_reservation_provider", "provider_name", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
+    provider_name: Mapped[str] = mapped_column(String(64))
+    operation: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(3))
+    amount_minor: Mapped[int] = mapped_column(Integer)
+    actual_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="reserved")
+    period_ids: Mapped[list] = mapped_column(JSON, default=list)
+    run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    person_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GlobalFieldFreshness(Base):
+    """When a shared field was observed, enriched, or verified, and when it is due again."""
+
+    __tablename__ = "global_field_freshness"
+    __table_args__ = (Index("uq_global_field_freshness", "person_id", "field_name", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("global_people.id"), index=True)
+    field_name: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DistributionPolicy(Base):
+    """How many distinct customers may receive one shared identity. Default is 3."""
+
+    __tablename__ = "distribution_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    max_customers: Mapped[int] = mapped_column(Integer, default=3)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DistributionSlot(Base):
+    """One shared identity. The count is distinct customers, not views."""
+
+    __tablename__ = "distribution_slots"
+
+    canonical_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    recipient_count: Mapped[int] = mapped_column(Integer, default=0)
+    saturated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LeadAllocation(Base):
+    """A customer received this identity. Repeating the same customer does not add a recipient."""
+
+    __tablename__ = "lead_allocations"
+    __table_args__ = (
+        Index("uq_lead_allocation_customer", "canonical_key", "customer_key", unique=True),
+        Index("ix_lead_allocation_customer", "customer_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    canonical_key: Mapped[str] = mapped_column(String(255))
+    customer_key: Mapped[str] = mapped_column(String(64))
+    person_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    search_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lead_record_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ContactEnrichmentJob(Base):
+    """One queued contact lookup for a person found by a discovery run."""
+
+    __tablename__ = "contact_enrichment_jobs"
+    __table_args__ = (Index("uq_contact_job_person_run", "person_id", "run_id", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("global_people.id"), index=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("discovery_runs.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class FetchStat(Base):
+    """Running counts for outbound fetch decisions. robots_disallow is the robots skip total."""
+
+    __tablename__ = "fetch_stats"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DiscoverySource(Base):
+    """One discovery pathway. New sources stay off until an operator enables them."""
+
+    __tablename__ = "discovery_sources"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    max_requests_per_run: Mapped[int] = mapped_column(Integer, default=5)
+    monthly_call_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    calls_used: Mapped[int] = mapped_column(Integer, default=0)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class WorkerHeartbeat(Base):
+    """Process heartbeat. This is not the planner lease."""
+
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), default="discovery")
+    status: Mapped[str] = mapped_column(String(32), default="running")
+    beat_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SchedulerLock(Base):
+    """Lease so two processes do not plan the same tick. Not a substitute for SKIP LOCKED."""
+
+    __tablename__ = "scheduler_locks"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class CachePolicy(Base):
+    """One row of quality rules. Tiers are labels, not accuracy guarantees."""
+
+    __tablename__ = "cache_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), default="default")
+    rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class Notification(Base):

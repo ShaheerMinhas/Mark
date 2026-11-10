@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { emailPresence, storedEmailStatusLabel } from "../emailPresence.js";
 
 function dash(value) {
   return value?.trim?.() ? value : "—";
@@ -8,30 +9,22 @@ function scorePct(score) {
   return `${Math.round((score || 0) * 100)}%`;
 }
 
-function statusMeta(lead) {
-  const status = lead.email_status || (lead.email ? "found" : "");
-  if (!status || status === "not_found") {
-    return { label: lead.email ? "Unlabeled" : "Not found", tone: "muted" };
-  }
-  const map = {
-    verified: { label: "Verified", tone: "good" },
-    found: { label: "Found", tone: "good" },
-    unverified: { label: "Unverified", tone: "warn" },
-    inferred: { label: "Inferred", tone: "warn" },
-    verify_uncertain: { label: "Uncertain", tone: "warn" },
-    invalid: { label: "Invalid", tone: "bad" },
-    not_found: { label: "Not found", tone: "muted" },
-  };
-  return map[status] || { label: status, tone: "muted" };
+function statusTone(status) {
+  if (status === "verified" || status === "found") return "good";
+  if (status === "invalid") return "bad";
+  if (status === "unverified" || status === "inferred" || status === "verify_uncertain") return "warn";
+  return "muted";
 }
 
 function EmailCell({ lead, onFindOne, looking, lookupBusy }) {
   const [open, setOpen] = useState(false);
-  const meta = statusMeta(lead);
-  if (!lead.email && (lead.email_status === "not_found" || !lead.email_status)) {
+  const presence = emailPresence(lead);
+  const storedLabel = storedEmailStatusLabel(lead);
+  if (presence !== "with_email") {
+    const label = looking ? "Looking up…" : presence === "no_email_found" ? "No email found" : "Not looked up";
     return (
       <div className="email-cell">
-        <span className="email-missing">{looking ? "Looking up…" : "Email not found"}</span>
+        <span className="email-missing">{label}</span>
         {onFindOne && lead.id ? (
           <button
             type="button"
@@ -39,21 +32,20 @@ function EmailCell({ lead, onFindOne, looking, lookupBusy }) {
             disabled={lookupBusy}
             onClick={() => onFindOne(lead.id)}
           >
-            {looking ? "Looking up…" : "Lookup"}
+            {looking ? "Looking up…" : "Look up"}
           </button>
         ) : null}
       </div>
     );
   }
-  if (!lead.email) {
-    return <span className="email-missing">Email not found</span>;
-  }
   const sources = Array.isArray(lead.email_evidence) ? lead.email_evidence : [];
   return (
-    <div className={`email-cell email-cell--${meta.tone}`}>
+    <div className={`email-cell email-cell--${statusTone(lead.email_status)}`}>
       <a href={`mailto:${lead.email}`}>{lead.email}</a>
       <div className="email-flags">
-        <span className={`email-badge email-badge--${meta.tone}`}>{meta.label}</span>
+        {storedLabel ? (
+          <span className={`email-badge email-badge--${statusTone(lead.email_status)}`}>{storedLabel}</span>
+        ) : null}
         {lead.email_confidence ? (
           <span className="email-conf">{lead.email_confidence} confidence</span>
         ) : null}

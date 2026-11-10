@@ -157,6 +157,53 @@ netlify deploy --prod
 
 ---
 
+## Processes
+
+Run the web process and the workers as separate processes. The web process serves the API. It does not crawl and it does not call paid providers.
+
+```bash
+# web
+MARK_INLINE_WORKER=0 uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+
+# customer search and email jobs
+python -m backend.worker
+
+# global discovery schedules. Leave this stopped until the gates below are set.
+python -m backend.discovery_worker
+```
+
+`GET /api/health` reports database reachability and the discovery worker heartbeat. The heartbeat is a database row, not the planner lease. No heartbeat means the worker status is `unknown`. SIGTERM asks the discovery worker to record `stopping` and leave the loop. A crashed job stays leased until the lease expires, then another worker can claim it. Do not run more than one discovery worker on SQLite.
+
+## Backup and restore
+
+Take a Postgres dump before a schema upgrade or a retention run:
+
+```bash
+pg_dump "$DATABASE_URL" --format=custom --file mark.dump
+pg_restore --clean --if-exists --dbname "$DATABASE_URL" mark.dump
+```
+
+`upgrade_database()` adds tables and columns. It does not copy `lead_records` into the shared cache. Run it on a restored copy before pointing traffic at a new database. This repository does not run that upgrade against a production database by itself.
+
+## Turning gates on
+
+Leave these off until an operator has configured them. Turning them on is not a claim that the deployment is production-ready.
+
+An autonomous technology target stays paused until an operator starts it. After that, and only while scheduling is enabled, `python -m backend.discovery_worker` runs one varied public-profile query every two hours and queues contact enrichment for each new person. Public pages are read before any paid adapter. Paid adapters stay off until credentials and a budget are saved. The interactive customer search uses the pinned fetch as well. The browser does not run that search. The worker asks only `html.duckduckgo.com` through the pinned fetch guard, stores a profile when the title parser can read a name, and leaves email and phone empty. A shared identity is offered to at most three distinct customers (or two, if an operator lowers the limit). The same organization is one customer. Lowering the limit does not delete leads already delivered. Raising it requires an explicit confirmation.
+
+- Paid email: platform credential, an approved price above zero, a rate cap, and global plus provider daily and monthly budgets. Customer environment keys are not reused.
+- Public search intent can be saved. Network fetching stays blocked because the legacy search clients are outside the outbound URL policy. Company research has no adapter.
+- Retention archives shared cache rows and suppresses those identities. It does not delete workspace leads and it is not a GDPR workflow.
+
+Platform operators are not created by signing up, and owning a workspace does not make someone an operator. After the person has a normal account:
+
+```bash
+python -m backend.platform_admin grant operator@example.com
+python -m backend.platform_admin revoke operator@example.com
+```
+
+The person must already have an account. Neither command sets a password, prints a password, or creates the first user as an operator. Operator sign-in is `https://your-host/admin`, separate from the customer sign-in. A customer session does not open the operator console, including when the same person is an operator. Revoke removes the role and invalidates operator tokens. Customer sessions are unchanged. There is no public registration on `/admin`.
+
 ## Architecture
 
 ```

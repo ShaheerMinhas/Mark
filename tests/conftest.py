@@ -13,6 +13,7 @@ import pytest
 _TMP_DIR = tempfile.mkdtemp(prefix="mark-tests-")
 os.environ["MARK_DATABASE_URL"] = f"sqlite:///{Path(_TMP_DIR) / 'test.db'}"
 os.environ["MARK_INLINE_WORKER"] = "0"
+os.environ["MARK_DISABLE_CONTACT_NETWORK"] = "1"
 os.environ.pop("OPENAI_API_KEY", None)
 os.environ.pop("HUNTER_API_KEY", None)
 

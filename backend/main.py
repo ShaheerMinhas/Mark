@@ -11,9 +11,20 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import CORS_ORIGINS, INLINE_WORKER, LOG_LEVEL
-from backend.database import init_db
+from backend.database import engine, init_db
 from backend.observability import configure_logging
-from backend.routers import auth, crm, organizations, people, platform, search_jobs, searches
+from backend.routers import (
+    auth,
+    cache,
+    crm,
+    discovery_control,
+    discovery_spend,
+    organizations,
+    people,
+    platform,
+    search_jobs,
+    searches,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -60,11 +71,44 @@ app.include_router(organizations.router)
 app.include_router(people.router)
 app.include_router(crm.router)
 app.include_router(platform.router)
+app.include_router(cache.router)
+app.include_router(discovery_control.router)
+app.include_router(discovery_spend.router)
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "product": "Mark", "version": "2.2.0", "linkedin_login_required": False}
+    from sqlalchemy import text
+
+    from backend.database import SessionLocal
+    from backend.services.discovery_engine.heartbeat import worker_health
+    from backend.services.discovery_engine.settings import ensure_settings
+
+    database = "ok"
+    worker = {"status": "unknown"}
+    public_search = "off"
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db = SessionLocal()
+        try:
+            settings = ensure_settings(db)
+            db.commit()
+            worker = worker_health(db)
+            public_search = "intent_on_network_blocked" if settings.allow_public_search else "off"
+        finally:
+            db.close()
+    except Exception:
+        database = "error"
+    return {
+        "status": "ok" if database == "ok" else "degraded",
+        "product": "Mark",
+        "version": "2.2.0",
+        "linkedin_login_required": False,
+        "database": database,
+        "discovery_worker": worker.get("status"),
+        "live_public_search": public_search,
+    }
 
 
 # Serve React production build

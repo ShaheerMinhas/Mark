@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from backend.database import get_db
@@ -82,6 +82,51 @@ def _record_activity(
     )
 
 
+def _has_email():
+    return and_(LeadRecord.email.isnot(None), LeadRecord.email != "")
+
+
+def _missing_email():
+    return or_(LeadRecord.email.is_(None), LeadRecord.email == "")
+
+
+def _email_was_looked_up():
+    """A lookup wrote a timestamp or a status. An address alone is not a lookup."""
+    return or_(
+        LeadRecord.email_enriched_at.isnot(None),
+        and_(LeadRecord.email_status.isnot(None), LeadRecord.email_status != ""),
+    )
+
+
+def _apply_email_filter(query, email_status: str):
+    es = (email_status or "").strip().lower()
+    if not es:
+        return query
+    if es in {"with_email", "has_email"}:
+        return query.filter(_has_email())
+    if es in {"without_email", "missing"}:
+        return query.filter(_missing_email())
+    if es == "not_searched":
+        return query.filter(_missing_email(), ~_email_was_looked_up())
+    if es == "no_email_found":
+        return query.filter(_missing_email(), _email_was_looked_up())
+    return query.filter(func.lower(func.coalesce(LeadRecord.email_status, "")) == es)
+
+
+def _email_facets(query) -> dict[str, int]:
+    all_count = int(query.count())
+    with_email = int(query.filter(_has_email()).count())
+    not_searched = int(query.filter(_missing_email(), ~_email_was_looked_up()).count())
+    no_email_found = int(query.filter(_missing_email(), _email_was_looked_up()).count())
+    return {
+        "all": all_count,
+        "with_email": with_email,
+        "without_email": all_count - with_email,
+        "not_searched": not_searched,
+        "no_email_found": no_email_found,
+    }
+
+
 def _item(lead: LeadRecord) -> PeopleItem:
     job = lead.search_job
     data = LeadOut.model_validate(lead).model_dump()
@@ -105,6 +150,7 @@ def list_people(
     email_status: str = "",
     company: str = "",
     location: str = "",
+    has_phone: str = "",
     priority: str = "",
     tag: str = "",
     assigned_user_id: int | None = None,
@@ -146,15 +192,6 @@ def list_people(
             | (func.coalesce(LeadRecord.crm_stage, "new") == chosen_stage)
         )
 
-    if email_status:
-        es = email_status.strip().lower()
-        if es == "missing":
-            query = query.filter(LeadRecord.email.is_(None) | (LeadRecord.email == ""))
-        elif es == "has_email":
-            query = query.filter(LeadRecord.email.isnot(None) & (LeadRecord.email != ""))
-        else:
-            query = query.filter(func.lower(func.coalesce(LeadRecord.email_status, "")) == es)
-
     if company.strip():
         query = query.filter(func.lower(func.coalesce(LeadRecord.company_name, "")).like(f"%{company.strip().lower()}%"))
     if location.strip():
@@ -163,17 +200,33 @@ def list_people(
             func.lower(func.coalesce(LeadRecord.personal_location, "")).like(loc)
             | func.lower(func.coalesce(LeadRecord.company_location, "")).like(loc)
         )
+    phone_choice = has_phone.strip().lower()
+    if phone_choice in {"yes", "true", "1"}:
+        query = query.filter(and_(LeadRecord.phone.isnot(None), LeadRecord.phone != ""))
+    elif phone_choice in {"no", "false", "0"}:
+        query = query.filter(or_(LeadRecord.phone.is_(None), LeadRecord.phone == ""))
     if priority.strip():
         query = query.filter(func.coalesce(LeadRecord.priority, "medium") == priority.strip().lower())
     if assigned_user_id is not None:
         query = query.filter(LeadRecord.assigned_user_id == assigned_user_id)
 
+    email_counts = _email_facets(query)
+    query = _apply_email_filter(query, email_status)
+
+    has_email_rank = case((_has_email(), 0), else_=1)
+    priority_rank = case(
+        (func.lower(func.coalesce(LeadRecord.priority, "medium")) == "high", 0),
+        (func.lower(func.coalesce(LeadRecord.priority, "medium")) == "low", 2),
+        else_=1,
+    )
     sorts = {
         "recent": (LeadRecord.id.desc(),),
         "relevance": (LeadRecord.relevance_score.desc(), LeadRecord.id.desc()),
-        "name": (LeadRecord.name.asc(), LeadRecord.id.asc()),
-        "company": (LeadRecord.company_name.asc(), LeadRecord.id.asc()),
-        "priority": (LeadRecord.priority.asc(), LeadRecord.id.desc()),
+        "name": (func.lower(LeadRecord.name).asc(), LeadRecord.id.asc()),
+        "company": (func.lower(func.coalesce(LeadRecord.company_name, "")).asc(), LeadRecord.id.asc()),
+        "title": (func.lower(func.coalesce(LeadRecord.work_designation, "")).asc(), LeadRecord.id.asc()),
+        "priority": (priority_rank.asc(), LeadRecord.id.desc()),
+        "email": (has_email_rank.asc(), func.lower(LeadRecord.name).asc(), LeadRecord.id.asc()),
     }
     order = sorts.get(sort, sorts["recent"])
 
@@ -201,6 +254,19 @@ def list_people(
         key = name if name in counts else "new"
         counts[key] = counts.get(key, 0) + int(count)
 
+    archive_clause = LeadRecord.archived_at.is_(None)
+    if archived_only:
+        library_total = int(
+            base.filter(
+                LeadRecord.archived_at.isnot(None)
+                | (func.coalesce(LeadRecord.lead_status, LeadRecord.crm_stage, "new") == "archived")
+            ).count()
+        )
+    elif include_archived or stage == "archived" or status == "archived":
+        library_total = int(base.count())
+    else:
+        library_total = int(base.filter(archive_clause).count())
+
     total_pages = max(1, (total + page_size - 1) // page_size)
     return PeoplePageOut(
         items=[_item(row) for row in rows],
@@ -212,7 +278,172 @@ def list_people(
             has_next=page < total_pages,
         ),
         stage_counts=counts,
+        email_counts=email_counts,
+        library_total=library_total,
     )
+
+
+@router.post("/{lead_id}/replace")
+def replace_person(
+    lead_id: int,
+    organization_id: int | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Keep the current lead and ask for a different eligible cached person.
+
+    The original assignment still counts toward the distribution limit.
+    """
+    from backend.services.discovery_engine.distribution import (
+        canonical_key_for,
+        customer_key_for,
+        try_allocate,
+    )
+    from backend.services.discovery_engine.suppression import is_suppressed
+    from backend.services.global_cache.match import match_people, query_from_search_filters
+    from backend.services.identity import identity_key
+
+    lead = (
+        _owned_leads(db, user, organization_id)
+        .options(joinedload(LeadRecord.search_job))
+        .filter(LeadRecord.id == lead_id)
+        .first()
+    )
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    job = lead.search_job
+    if lead.replaced_at is None:
+        lead.replaced_at = datetime.utcnow()
+        _record_activity(db, lead.id, user.id, "replaced", "Asked for a different cached person")
+        db.commit()
+    excluded = {
+        key
+        for (key,) in db.query(LeadRecord.identity_key)
+        .filter(LeadRecord.search_job_id == job.id, LeadRecord.identity_key.isnot(None))
+        .all()
+    }
+
+    def _take_next(detail: str) -> dict | None:
+        query = query_from_search_filters(dict(job.filters or {}))
+        query.customer_key = customer_key_for(job)
+        from backend.services.discovery_engine.distribution import ensure_policy
+
+        query.max_recipients = int(ensure_policy(db).max_customers or 3)
+        from backend.services.discovery_engine.settings import ensure_settings
+
+        query.serve_name_only = bool(ensure_settings(db).serve_name_only)
+        query.page_size = 25
+        _total, rows = match_people(db, query)
+        for person in rows:
+            if is_suppressed(db, email=person.email, domain=person.domain, profile_url=person.profile_url):
+                continue
+            key = identity_key(
+                linkedin_url=person.profile_url or "",
+                name=person.full_name or "",
+                company=person.company_name or "",
+                title=person.title or "",
+            )
+            if not key or key in excluded:
+                continue
+            canonical = canonical_key_for(
+                profile_url=person.profile_url or "",
+                name=person.full_name or "",
+                domain=person.domain or "",
+            )
+            if canonical is None:
+                continue
+            decision = try_allocate(
+                db,
+                canonical_key=canonical,
+                customer_key=customer_key_for(job),
+                person_id=person.id,
+                search_job_id=job.id,
+                lead_record_id=None,
+            )
+            if decision == "saturated":
+                continue
+            from backend.models import CandidateStatus, EnrichmentStatus, SearchCandidate
+
+            candidate = SearchCandidate(
+                search_job_id=job.id,
+                identity_key=key,
+                name=person.full_name,
+                title=person.title,
+                company=person.company_name,
+                location=person.city or person.country_code,
+                linkedin_url=person.profile_url,
+                linkedin_url_normalized=person.profile_url_normalized,
+                source_url=person.profile_url,
+                status=CandidateStatus.QUALIFIED.value,
+                relevance_score=float(person.quality_score or 0),
+            )
+            db.add(candidate)
+            db.flush()
+            replacement = LeadRecord(
+                search_job_id=job.id,
+                candidate_id=candidate.id,
+                identity_key=key,
+                linkedin_url_normalized=person.profile_url_normalized,
+                name=person.full_name or "Unknown",
+                email=person.email,
+                email_status=person.email_status,
+                email_source="shared_cache" if person.email else None,
+                phone=person.phone if person.phone else None,
+                work_designation=person.title,
+                company_name=person.company_name,
+                company_domain=person.domain,
+                linkedin_url=person.profile_url,
+                relevance_score=float(person.quality_score or 0),
+                enrichment_status=EnrichmentStatus.PENDING.value,
+                tags=[],
+            )
+            db.add(replacement)
+            db.commit()
+            return {
+                "status": "replaced",
+                "kept_lead_id": lead.id,
+                "lead_id": replacement.id,
+                "detail": detail,
+            }
+        return None
+
+    found = _take_next("A different cached person was added. The original lead was kept.")
+    if found is not None:
+        return found
+    from backend.models import DiscoveryTarget
+    from backend.services.discovery_engine.settings import ensure_settings
+
+    if not ensure_settings(db).enabled:
+        return {
+            "status": "exhausted",
+            "kept_lead_id": lead.id,
+            "detail": "No other eligible cached person is available. The original lead was kept.",
+        }
+    target = (
+        db.query(DiscoveryTarget)
+        .filter(DiscoveryTarget.autonomous.is_(True), DiscoveryTarget.scheduling_status == "active")
+        .order_by(DiscoveryTarget.priority.asc(), DiscoveryTarget.id.asc())
+        .first()
+    )
+    if target is None:
+        return {
+            "status": "exhausted",
+            "kept_lead_id": lead.id,
+            "detail": "No other eligible cached person is available, and no autonomous search is active. The original lead was kept.",
+        }
+    from backend.services.discovery_engine.ingest import collect_public_hits, ingest_hits
+
+    hits, live_detail = collect_public_hits(target)
+    if hits:
+        ingest_hits(db, hits)
+        found = _take_next("A different person from the autonomous search was added. The original lead was kept.")
+        if found is not None:
+            return found
+    return {
+        "status": "exhausted",
+        "kept_lead_id": lead.id,
+        "detail": live_detail or "No other eligible person is available. The original lead was kept.",
+    }
 
 
 @router.get("/{lead_id}")

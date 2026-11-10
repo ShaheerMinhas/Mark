@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.auth_utils import create_access_token, hash_password, verify_password
+from backend.auth_utils import ADMIN_AUDIENCE, CUSTOMER_AUDIENCE, create_access_token, hash_password, verify_password
 from backend.database import get_db
-from backend.dependencies import get_current_user
+from backend.dependencies import get_current_admin, get_current_user
 from backend.models import AccountType, Organization, OrganizationMember, OrgRole, User
-from pydantic import BaseModel
 from backend.schemas import OrgMembershipOut, TokenResponse, UserCreate, UserLogin, UserOut
+from backend.services.login_guard import record_failure, too_many_attempts
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -40,6 +41,7 @@ def _user_out(db: Session, user: User) -> UserOut:
         email=user.email,
         full_name=user.full_name,
         account_type=user.account_type,
+        is_platform_admin=bool(getattr(user, "is_platform_admin", False)),
         organizations=orgs,
     )
 
@@ -80,17 +82,97 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(user)
-    token = create_access_token({"sub": str(user.id)})
+    token = create_access_token({"sub": str(user.id)}, audience=CUSTOMER_AUDIENCE)
     return TokenResponse(access_token=token, user=_user_out(db, user))
+
+
+def _client_host(request: Request) -> str:
+    if request.client is None:
+        return "unknown"
+    return request.client.host or "unknown"
+
+
+def _login_bucket(scope: str, request: Request, email: str) -> str:
+    return f"{scope}:{_client_host(request)}:{email.strip().lower()}"
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email.lower()).first()
+def login(body: UserLogin, request: Request, db: Session = Depends(get_db)):
+    bucket = _login_bucket("customer", request, body.email)
+    if too_many_attempts(bucket):
+        raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again later.")
+    user = db.query(User).filter(User.email == body.email.lower(), User.is_active.is_(True)).first()
     if not user or not verify_password(body.password, user.hashed_password):
+        record_failure(bucket)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_access_token({"sub": str(user.id)})
+    token = create_access_token({"sub": str(user.id)}, audience=CUSTOMER_AUDIENCE)
     return TokenResponse(access_token=token, user=_user_out(db, user))
+
+
+class AdminSessionOut(BaseModel):
+    id: int
+    email: str
+    full_name: str
+    role: str = "platform_admin"
+
+
+class AdminLogin(BaseModel):
+    email: str
+    password: str
+    next: str | None = None
+
+
+class AdminTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    next: str = "/admin"
+    operator: AdminSessionOut
+
+
+def _admin_next(value: str | None) -> str:
+    if not value:
+        return "/admin"
+    if not value.startswith("/admin") or value.startswith("//") or "\\" in value or "://" in value or ".." in value:
+        return "/admin"
+    allowed = value == "/admin" or value.startswith("/admin/")
+    if not allowed:
+        return "/admin"
+    return value
+
+
+def _operator_out(user: User) -> AdminSessionOut:
+    return AdminSessionOut(id=user.id, email=user.email, full_name=user.full_name)
+
+
+@router.post("/admin/login", response_model=AdminTokenResponse)
+def admin_login(body: AdminLogin, request: Request, db: Session = Depends(get_db)):
+    """Operator sign-in. A customer password for a non-operator gets the same failure as an unknown email."""
+    bucket = _login_bucket("admin", request, body.email)
+    if too_many_attempts(bucket):
+        raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again later.")
+    user = db.query(User).filter(User.email == body.email.lower(), User.is_active.is_(True)).first()
+    password_ok = bool(user) and verify_password(body.password, user.hashed_password)
+    if not password_ok or not user.is_platform_admin:
+        record_failure(bucket)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(
+        {"sub": str(user.id), "ver": int(user.admin_token_version or 0)},
+        audience=ADMIN_AUDIENCE,
+    )
+    return AdminTokenResponse(access_token=token, next=_admin_next(body.next), operator=_operator_out(user))
+
+
+@router.get("/admin/me", response_model=AdminSessionOut)
+def admin_me(admin: User = Depends(get_current_admin)):
+    return _operator_out(admin)
+
+
+@router.post("/admin/logout")
+def admin_logout(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Invalidate outstanding operator tokens. A customer session for the same person stays valid."""
+    admin.admin_token_version = int(admin.admin_token_version or 0) + 1
+    db.commit()
+    return {"ok": True}
 
 
 class ProfileUpdate(BaseModel):
