@@ -17,6 +17,12 @@ function searchStatusLabel(status) {
   return SEARCH_STATUS_LABELS[status] || String(status || "").replaceAll("_", " ");
 }
 
+function pillStatus(search) {
+  const label = search.activity_label || "";
+  if (label.startsWith("Email lookup") || label === "Finding emails") return "enriching";
+  return search.detailed_status || search.status;
+}
+
 export default function Dashboard({ onOpenSearch, onNewSearch }) {
   const [searches, setSearches] = useState([]);
   const [overview, setOverview] = useState(null);
@@ -106,7 +112,7 @@ export default function Dashboard({ onOpenSearch, onNewSearch }) {
                 {s.prompt.length > 100 ? "…" : ""}
               </p>
               <span className="meta">
-                <span className={`status-pill status-pill--${s.detailed_status || s.status}`}>{searchStatusLabel(s.detailed_status || s.status)}</span>
+                <span className={`status-pill status-pill--${pillStatus(s)}`}>{s.activity_label || searchStatusLabel(s.detailed_status || s.status)}</span>
                 {s.lead_count} leads · {s.emails_found || 0} emails · {new Date(s.created_at).toLocaleDateString()}
               </span>
             </div>

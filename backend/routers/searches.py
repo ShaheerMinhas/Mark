@@ -18,7 +18,7 @@ from backend.services.EmailModule.jobs import (
 )
 from backend.services.export_service import leads_to_csv, leads_to_xml
 from backend.services.search_jobs import enqueue_discovery
-from backend.services.search_presenter import ensure_search_ready, search_job_out
+from backend.services.search_presenter import activity_labels, ensure_search_ready, search_job_out
 from backend.services.search_service import create_search_job, run_search
 
 router = APIRouter(prefix="/api", tags=["searches"])
@@ -120,7 +120,8 @@ def create_search(
 @router.get("/searches", response_model=list[SearchJobOut])
 def list_searches(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     jobs = db.query(SearchJob).filter(SearchJob.owner_id == user.id).order_by(SearchJob.created_at.desc()).all()
-    return [search_job_out(j) for j in jobs]
+    labels = activity_labels(db, jobs)
+    return [search_job_out(job, db, activity_label=labels.get(job.id)) for job in jobs]
 
 
 @router.get("/searches/{search_id}", response_model=SearchResultOut)

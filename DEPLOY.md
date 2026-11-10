@@ -157,6 +157,22 @@ netlify deploy --prod
 
 ---
 
+## Discovery worker (optional, off by default)
+
+Global discovery does not run inside the web service. Customer searches still use `python -m backend.worker` (or the inline worker). A future operator process is:
+
+```bash
+python -m backend.discovery_worker
+```
+
+Leave it stopped until a budget ledger exists. The process plans schedules and records skipped stages. It does not call live search or paid providers. Those switches are hard-off in code.
+
+Platform operators are not created by signing up, and owning a workspace does not make someone an operator. After the person has a normal account:
+
+```bash
+python -m backend.platform_admin grant operator@example.com
+```
+
 ## Architecture
 
 ```

@@ -38,6 +38,13 @@ def get_optional_user(
     return db.query(User).filter(User.id == int(payload["sub"]), User.is_active.is_(True)).first()
 
 
+def require_platform_admin(user: User = Depends(get_current_user)) -> User:
+    """Platform operator. Owning a workspace does not grant this."""
+    if not getattr(user, "is_platform_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin required")
+    return user
+
+
 def require_org_access(
     db: Session,
     user: User,

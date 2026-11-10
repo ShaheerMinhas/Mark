@@ -62,8 +62,33 @@ def _step_cache_tables(bind) -> None:
         session.close()
 
 
+def _step_scheduler(bind) -> None:
+    """Scheduler tables. Does not enable discovery and does not copy private leads."""
+    names = (
+        "suppression_entries",
+        "discovery_settings",
+        "discovery_targets",
+        "discovery_runs",
+        "discovery_stage_attempts",
+        "scheduler_locks",
+    )
+    Base.metadata.create_all(
+        bind=bind,
+        tables=[Base.metadata.tables[name] for name in names if name in Base.metadata.tables],
+    )
+    from backend.services.discovery_engine.settings import ensure_settings
+
+    session = Session(bind=bind)
+    try:
+        ensure_settings(session)
+        session.commit()
+    finally:
+        session.close()
+
+
 STEPS: tuple[tuple[int, str, object], ...] = (
     (1, "global_discovery_cache", _step_cache_tables),
+    (2, "discovery_scheduler", _step_scheduler),
 )
 
 

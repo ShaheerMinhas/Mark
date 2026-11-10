@@ -46,7 +46,16 @@ def serve_cached_people(db: Session, job: SearchJob) -> CacheCoverage:
         .all()
     }
     served = 0
+    from backend.services.discovery_engine.suppression import is_suppressed
+
     for person in rows:
+        if is_suppressed(
+            db,
+            email=person.email,
+            domain=person.domain,
+            profile_url=person.profile_url_normalized or person.profile_url,
+        ):
+            continue
         if served >= requested:
             break
         key = identity_key(

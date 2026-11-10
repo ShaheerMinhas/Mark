@@ -240,6 +240,16 @@ def _bind_keys(db: Session, person_id: int, keys: list[tuple[str, str]], blocked
 def upsert_public_prospect(db: Session, prospect: PublicProspect, _attempt: int = 0) -> GlobalPerson:
     if (prospect.share_scope or "public") != "public":
         raise PrivateEvidenceError("Only public evidence can enter the shared cache")
+    from backend.services.discovery_engine.suppression import is_suppressed
+
+    if is_suppressed(
+        db,
+        email=prospect.email,
+        domain=prospect.domain or prospect.website,
+        profile_url=prospect.profile_url,
+        provider_id=prospect.provider_record_id,
+    ):
+        raise PrivateEvidenceError("Suppressed identity cannot enter the shared cache")
     if not (prospect.full_name or "").strip() and not prospect.profile_url and not prospect.email:
         raise ValueError("A public prospect needs a name, profile URL, or email")
 

@@ -196,6 +196,8 @@ class SearchJobOut(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    #: List label when email lookup is still queued after discovery has finished.
+    activity_label: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -77,7 +77,17 @@ The step does not read `lead_records`. Running it twice does not duplicate peopl
 
 ### Phase 2 — scheduler and worker
 
-A database-backed schedule and queue that does not depend on a browser session or an in-memory timer. One lock so two app instances do not run the same tick. Leases, crash recovery, bounded concurrency, exponential backoff with jitter, and idempotency keys. Pipeline stages: discover, normalize, dedup, validate, associate company, optional enrichment, existing email find/verify, cache write, evidence, analytics. Each stage can be retried on its own. Pause keeps queued work. Cancel is a different action from pause and resume.
+Implemented as a separate process, `python -m backend.discovery_worker`. The API process does not start it. Customer searches still use `python -m backend.worker`.
+
+What runs: due **active** targets become `discovery_runs` plus a `discovery_pipeline` queue row. The worker claims those rows with the existing lease and heartbeat. Stages are recorded. With the defaults, every stage is a recorded skip. Live public search is a hard-off constant (`LIVE_PUBLIC_SEARCH_ENABLED`). Paid enrich and email stages always skip because there is no budget ledger.
+
+What does not run: no crawl, no paid provider, no admin UI. A platform admin can store targets and suppression rules. New targets are created **paused**. Start or resume is what makes them eligible. Pause and stop scheduling do not delete queued runs. Cancel marks one run cancelled and leaves the queue row in place.
+
+Schedules: `interval` (at least 15 minutes), `daily` at an hour and minute, and `weekdays` (Monday–Friday) in an IANA timezone. Stored instants are naive UTC. SQLite claims are compare-and-set. Postgres queue claims use `FOR UPDATE SKIP LOCKED`. The planner lock is a lease row, not SKIP LOCKED. Do not treat SQLite as safe for many discovery workers at once.
+
+Operators are not created by registration. Grant one with `python -m backend.platform_admin grant person@example.com` after the account exists. Workspace owners are not platform admins.
+
+Suppression is checked on cache write and on cache serve. Deleting a workspace lead does not delete or alter the shared cache. To stop a public identity from being stored or served, a platform admin adds a suppression row. That is the retention hook until a later deletion workflow exists.
 
 ### Phase 3 — admin screens
 
@@ -119,10 +129,18 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 
 ### Phase 2
 
-- [ ] Schedule rows survive a process restart.
-- [ ] Two workers cannot claim the same tick.
-- [ ] Pause does not delete queued jobs. Cancel does not pretend to be pause.
-- [ ] A failed stage retries with backoff and does not rerun completed stages.
+- [x] Schedule and run rows survive a new database session.
+- [x] A second planner tick does not create a second run for the same slot.
+- [x] Two claimers cannot hold the same queue row. An expired lease can be claimed again.
+- [x] Pause and stop scheduling leave queued runs in place. Cancel marks the run and does not delete the queue row.
+- [x] Retry delay uses capped exponential backoff and explicit jitter. The last attempt is not requeued.
+- [x] Customers and workspace owners receive 403. A platform admin can store a paused target.
+- [x] Suppression blocks ingest and serving.
+- [x] A disabled run does not call public search or paid email providers.
+- [x] Fresh cache rows are not refreshed.
+- [x] Overview says "Email lookup queued" when discovery is finished and the enrichment job is only queued.
+- [ ] Live public search and paid enrichment. Both stay hard-off until a budget ledger exists.
+- [ ] Postgres SKIP LOCKED is implemented for the job queue and is not what SQLite uses. Multi-worker SQLite is not a supported production lock.
 
 ### Phase 3
 

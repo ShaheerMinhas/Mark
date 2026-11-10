@@ -40,7 +40,40 @@ def _lead_count(job: SearchJob, db: Session | None) -> int:
     return len(job.leads) if job.leads else 0
 
 
-def search_job_out(job: SearchJob, db: Session | None = None) -> SearchJobOut:
+def activity_labels(db: Session, jobs: list[SearchJob]) -> dict[int, str]:
+    """Say when email lookup is still queued after discovery has already finished."""
+    if not jobs:
+        return {}
+    ids = {job.id for job in jobs}
+    rows = (
+        db.query(QueuedJob)
+        .filter(QueuedJob.job_type == JobType.SEARCH_ENRICHMENT.value)
+        .order_by(QueuedJob.id.desc())
+        .all()
+    )
+    latest: dict[int, QueuedJob] = {}
+    for row in rows:
+        try:
+            search_id = int((row.payload or {}).get("search_job_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if search_id in ids and search_id not in latest:
+            latest[search_id] = row
+    labels: dict[int, str] = {}
+    for job in jobs:
+        queued = latest.get(job.id)
+        if job.status == SearchJobStatus.ENRICHING or (queued and queued.status == "running"):
+            labels[job.id] = "Finding emails"
+        elif job.status in TERMINAL_SEARCH_STATUSES and queued and queued.status == "queued":
+            labels[job.id] = (
+                "Email lookup waiting to retry" if (queued.last_error or "").strip() else "Email lookup queued"
+            )
+    return labels
+
+
+def search_job_out(
+    job: SearchJob, db: Session | None = None, *, activity_label: str | None = None
+) -> SearchJobOut:
     filters = dict(job.filters or {})
     # Progress used to be smuggled through the filters blob; drop the stale key so
     # it never leaks back out to clients.
@@ -71,6 +104,7 @@ def search_job_out(job: SearchJob, db: Session | None = None) -> SearchJobOut:
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
+        activity_label=activity_label,
     )
 
 

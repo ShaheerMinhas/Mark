@@ -120,6 +120,7 @@ class QueryRunStatus(str, enum.Enum):
 class JobType(str, enum.Enum):
     SEARCH_DISCOVERY = "search_discovery"
     SEARCH_ENRICHMENT = "search_enrichment"
+    DISCOVERY_PIPELINE = "discovery_pipeline"
 
 
 class QueuedJobStatus(str, enum.Enum):
@@ -142,6 +143,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     account_type: Mapped[AccountType] = mapped_column(Enum(AccountType), default=AccountType.INDIVIDUAL)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Platform operator. Never granted by registration or by owning a workspace.
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     memberships: Mapped[list[OrganizationMember]] = relationship(back_populates="user")
@@ -817,6 +820,111 @@ class GlobalIdentityKey(Base):
     key_value: Mapped[str] = mapped_column(String(255))
     subject_type: Mapped[str] = mapped_column(String(16))
     subject_id: Mapped[int] = mapped_column(Integer)
+
+
+class SuppressionEntry(Base):
+    """Identities the shared cache must not store or serve."""
+
+    __tablename__ = "suppression_entries"
+    __table_args__ = (
+        Index("uq_suppression_kind_value", "kind", "normalized_value", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    normalized_value: Mapped[str] = mapped_column(String(255))
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoverySettings(Base):
+    """One row. Discovery and paid calls default off."""
+
+    __tablename__ = "discovery_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    live_public_search_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    paid_providers_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
+    max_runs_per_tick: Mapped[int] = mapped_column(Integer, default=5)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryTarget(Base):
+    """Saved crawl target. Scheduling state is not the same thing as cancelling a run."""
+
+    __tablename__ = "discovery_targets"
+    __table_args__ = (Index("ix_discovery_targets_due", "scheduling_status", "next_run_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    #: active | paused | stopped. Stopped means no new runs. Queued runs stay.
+    scheduling_status: Mapped[str] = mapped_column(String(32), default="paused")
+    #: interval | daily | weekdays
+    schedule_type: Mapped[str] = mapped_column(String(32), default="daily")
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hour: Mapped[int] = mapped_column(Integer, default=6)
+    minute: Mapped[int] = mapped_column(Integer, default=0)
+    max_people_per_run: Mapped[int] = mapped_column(Integer, default=25)
+    max_queries_per_run: Mapped[int] = mapped_column(Integer, default=5)
+    refresh_hours: Mapped[int] = mapped_column(Integer, default=168)
+    countries: Mapped[list] = mapped_column(JSON, default=list)
+    industries: Mapped[list] = mapped_column(JSON, default=list)
+    titles: Mapped[list] = mapped_column(JSON, default=list)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryRun(Base):
+    __tablename__ = "discovery_runs"
+    __table_args__ = (
+        Index("uq_discovery_run_idempotency", "idempotency_key", unique=True),
+        Index("ix_discovery_runs_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("discovery_targets.id"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    people_limit: Mapped[int] = mapped_column(Integer, default=25)
+    query_limit: Mapped[int] = mapped_column(Integer, default=5)
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    queue_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryStageAttempt(Base):
+    __tablename__ = "discovery_stage_attempts"
+    __table_args__ = (Index("ix_discovery_stage_run", "run_id", "stage"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("discovery_runs.id"), index=True)
+    stage: Mapped[str] = mapped_column(String(64))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class SchedulerLock(Base):
+    """Lease so two processes do not plan the same tick. Not a substitute for SKIP LOCKED."""
+
+    __tablename__ = "scheduler_locks"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class CachePolicy(Base):

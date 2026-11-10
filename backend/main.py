@@ -13,7 +13,17 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import CORS_ORIGINS, INLINE_WORKER, LOG_LEVEL
 from backend.database import init_db
 from backend.observability import configure_logging
-from backend.routers import auth, cache, crm, organizations, people, platform, search_jobs, searches
+from backend.routers import (
+    auth,
+    cache,
+    crm,
+    discovery_control,
+    organizations,
+    people,
+    platform,
+    search_jobs,
+    searches,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -61,6 +71,7 @@ app.include_router(people.router)
 app.include_router(crm.router)
 app.include_router(platform.router)
 app.include_router(cache.router)
+app.include_router(discovery_control.router)
 
 
 @app.get("/api/health")
