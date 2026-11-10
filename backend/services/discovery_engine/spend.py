@@ -530,6 +530,13 @@ def cache_health(db: Session, *, now: datetime | None = None) -> dict:
     fresh = (
         db.query(func.count(GlobalFieldFreshness.id)).filter(GlobalFieldFreshness.next_due_at >= now).scalar() or 0
     )
+    active = db.query(GlobalPerson).filter(GlobalPerson.archived_at.is_(None))
+    with_email = active.filter(GlobalPerson.email.isnot(None), GlobalPerson.email != "").count()
+    with_phone = active.filter(GlobalPerson.phone.isnot(None), GlobalPerson.phone != "").count()
+    name_only = active.filter(
+        (GlobalPerson.email.is_(None)) | (GlobalPerson.email == ""),
+        (GlobalPerson.phone.is_(None)) | (GlobalPerson.phone == ""),
+    ).count()
     people = db.query(func.count(GlobalPerson.id)).filter(GlobalPerson.archived_at.is_(None)).scalar() or 0
     companies = db.query(func.count(GlobalCompany.id)).filter(GlobalCompany.archived_at.is_(None)).scalar() or 0
     ineligible = db.query(func.count(GlobalEvidence.id)).filter(GlobalEvidence.eligible.is_(False)).scalar() or 0
@@ -547,6 +554,13 @@ def cache_health(db: Session, *, now: datetime | None = None) -> dict:
         "stale_fields": int(stale),
         "fresh_fields": int(fresh),
         "ineligible_evidence": int(ineligible),
-        "detail": "Stale means next_due_at is in the past. Counts are SQL aggregates. Cost is on the usage report.",
+        "with_email": int(with_email),
+        "with_phone": int(with_phone),
+        "name_only": int(name_only),
+        "detail": (
+            "Stale means next_due_at is in the past. Counts are SQL aggregates. "
+            "With email and with phone can overlap. Name-only means neither. "
+            "An inferred address is not verified. Cost is on the usage report."
+        ),
         "distribution": distribution_summary(db),
     }

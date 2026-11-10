@@ -279,6 +279,8 @@ def _person_dict(row: GlobalPerson) -> dict:
         "industry": row.industry,
         "email": row.email,
         "email_status": row.email_status,
+        "email_confidence": row.email_confidence,
+        "contact_note": row.contact_note,
         "phone": row.phone,
         "quality_tier": row.quality_tier,
         "profile_url": row.profile_url,

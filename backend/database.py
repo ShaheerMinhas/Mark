@@ -67,6 +67,8 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("pause_verify", "BOOLEAN DEFAULT 1"),
         ("allow_public_search", "BOOLEAN DEFAULT 0"),
         ("retention_days", "INTEGER"),
+        ("store_name_only", "BOOLEAN DEFAULT 1"),
+        ("serve_name_only", "BOOLEAN DEFAULT 1"),
     ),
     "provider_usage": (
         ("scope", "VARCHAR(16)"),
@@ -76,6 +78,7 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("archived_at", "DATETIME"),
         ("correction_note", "TEXT"),
         ("canonical_key", "VARCHAR(255)"),
+        ("contact_note", "TEXT"),
     ),
     "global_companies": (
         ("archived_at", "DATETIME"),

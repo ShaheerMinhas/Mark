@@ -103,12 +103,15 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
 
         hits, discover_detail = collect_public_hits(target)
         if hits:
+            from backend.services.discovery_engine.contacts import queue_contact_jobs
+
             stats = ingest_hits(db, hits)
+            queued = queue_contact_jobs(db, list(stats.get("new_ids") or []), run.id)
             discover_status = "ingested"
             discover_detail = (
                 f"Ingested {stats['ingested']} public people. "
                 f"{stats['duplicates']} were already cached. {stats['suppressed']} were suppressed. "
-                "Company research was not called."
+                f"Queued {queued} contact enrichment jobs. Company research was not called."
             )
         else:
             discover_status = "blocked"

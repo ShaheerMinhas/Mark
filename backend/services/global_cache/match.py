@@ -7,7 +7,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session, joinedload
 
-from sqlalchemy import or_
+from sqlalchemy import and_, case, or_
 
 from backend.models import DistributionSlot, GlobalPerson, GlobalPersonTechnology, LeadAllocation
 from backend.services.global_cache.normalize import country_code, normalize_domain, normalize_technology
@@ -29,6 +29,7 @@ class CacheQuery:
     page_size: int = 25
     customer_key: str | None = None
     max_recipients: int | None = None
+    serve_name_only: bool = True
 
 
 def _filtered(db: Session, query: CacheQuery):
@@ -68,6 +69,13 @@ def _filtered(db: Session, query: CacheQuery):
                 GlobalPerson.canonical_key.in_(mine),
             )
         )
+    if not query.serve_name_only:
+        q = q.filter(
+            or_(
+                and_(GlobalPerson.email.isnot(None), GlobalPerson.email != ""),
+                and_(GlobalPerson.phone.isnot(None), GlobalPerson.phone != ""),
+            )
+        )
     if query.technologies:
         q = q.filter(
             GlobalPerson.id.in_(
@@ -84,9 +92,16 @@ def match_people(db: Session, query: CacheQuery) -> tuple[int, list[GlobalPerson
     size = max(1, min(100, int(query.page_size or 25)))
     filtered = _filtered(db, query)
     total = filtered.order_by(None).count()
+    contact_rank = case(
+        (and_(GlobalPerson.email.isnot(None), GlobalPerson.email_status == "verified"), 0),
+        (and_(GlobalPerson.phone.isnot(None), GlobalPerson.phone != ""), 1),
+        (and_(GlobalPerson.email.isnot(None), GlobalPerson.email_status.in_(("found", "unverified"))), 2),
+        (and_(GlobalPerson.email.isnot(None), GlobalPerson.email_status == "inferred"), 3),
+        else_=4,
+    )
     rows = (
         filtered.options(joinedload(GlobalPerson.company))
-        .order_by(GlobalPerson.quality_score.desc(), GlobalPerson.updated_at.desc(), GlobalPerson.id.desc())
+        .order_by(contact_rank.asc(), GlobalPerson.quality_score.desc(), GlobalPerson.updated_at.desc(), GlobalPerson.id.desc())
         .offset((page - 1) * size)
         .limit(size)
         .all()

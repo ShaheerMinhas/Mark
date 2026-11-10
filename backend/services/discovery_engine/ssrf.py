@@ -1,8 +1,9 @@
-"""Outbound URL policy for new discovery fetches.
+"""Outbound URL policy for discovery fetches.
 
-Legacy search-engine and public-email clients do not use this module. Provider
-APIs are fixed vendor hosts, not operator-supplied URLs. A new fetch must call
+The autonomous company-page lookup and the interactive search client call
 ``safe_fetch`` so every address and every redirect is checked before connect.
+Older email-module page fetchers still use their own HTTP client. Provider APIs
+are fixed vendor hosts, not operator-supplied URLs.
 """
 
 from __future__ import annotations

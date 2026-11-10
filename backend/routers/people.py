@@ -329,6 +329,9 @@ def replace_person(
         from backend.services.discovery_engine.distribution import ensure_policy
 
         query.max_recipients = int(ensure_policy(db).max_customers or 3)
+        from backend.services.discovery_engine.settings import ensure_settings
+
+        query.serve_name_only = bool(ensure_settings(db).serve_name_only)
         query.page_size = 25
         _total, rows = match_people(db, query)
         for person in rows:

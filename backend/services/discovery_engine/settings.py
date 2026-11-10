@@ -45,10 +45,24 @@ def ensure_settings(db: Session) -> DiscoverySettings:
         row.max_runs_per_hour = 4
     if not row.max_runs_per_day:
         row.max_runs_per_day = 24
+    if row.store_name_only is None:
+        row.store_name_only = True
+    if row.serve_name_only is None:
+        row.serve_name_only = True
     return row
 
 
-def update_limits(db: Session, *, enabled: bool, max_concurrency: int, max_runs_per_tick: int, max_runs_per_hour: int, max_runs_per_day: int) -> DiscoverySettings:
+def update_limits(
+    db: Session,
+    *,
+    enabled: bool,
+    max_concurrency: int,
+    max_runs_per_tick: int,
+    max_runs_per_hour: int,
+    max_runs_per_day: int,
+    store_name_only: bool = True,
+    serve_name_only: bool = True,
+) -> DiscoverySettings:
     if not 1 <= max_concurrency <= 8:
         raise ValueError("max_concurrency must be 1..8")
     if not 1 <= max_runs_per_tick <= 20:
@@ -63,6 +77,8 @@ def update_limits(db: Session, *, enabled: bool, max_concurrency: int, max_runs_
     row.max_runs_per_tick = max_runs_per_tick
     row.max_runs_per_hour = max_runs_per_hour
     row.max_runs_per_day = max_runs_per_day
+    row.store_name_only = bool(store_name_only)
+    row.serve_name_only = bool(serve_name_only)
     row.live_public_search_enabled = False
     row.updated_at = datetime.utcnow()
     db.commit()

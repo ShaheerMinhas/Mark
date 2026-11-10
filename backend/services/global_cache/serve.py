@@ -38,9 +38,12 @@ def serve_cached_people(db: Session, job: SearchJob) -> CacheCoverage:
     requested = _requested(filters)
     from backend.services.discovery_engine.distribution import customer_key_for, ensure_policy
 
+    from backend.services.discovery_engine.settings import ensure_settings
+
     query = query_from_search_filters(filters)
     query.customer_key = customer_key_for(job)
     query.max_recipients = int(ensure_policy(db).max_customers or 3)
+    query.serve_name_only = bool(ensure_settings(db).serve_name_only)
     query.page_size = min(100, requested)
     matched, rows = match_people(db, query)
     existing = {

@@ -741,6 +741,8 @@ class GlobalPerson(Base):
         Index("ix_global_people_name", "name_normalized"),
         Index("ix_global_people_profile", "profile_url_normalized"),
         Index("ix_global_people_canonical", "canonical_key"),
+        Index("ix_global_people_email", "email"),
+        Index("ix_global_people_phone", "phone"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -771,6 +773,7 @@ class GlobalPerson(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     email_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    contact_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     quality_score: Mapped[float] = mapped_column(Float, default=0.0)
     quality_tier: Mapped[str] = mapped_column(String(32), default="basic")
@@ -866,6 +869,8 @@ class DiscoverySettings(Base):
     max_runs_per_tick: Mapped[int] = mapped_column(Integer, default=5)
     max_runs_per_hour: Mapped[int] = mapped_column(Integer, default=4)
     max_runs_per_day: Mapped[int] = mapped_column(Integer, default=24)
+    store_name_only: Mapped[bool] = mapped_column(Boolean, default=True)
+    serve_name_only: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -1113,6 +1118,21 @@ class LeadAllocation(Base):
     search_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lead_record_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ContactEnrichmentJob(Base):
+    """One queued contact lookup for a person found by a discovery run."""
+
+    __tablename__ = "contact_enrichment_jobs"
+    __table_args__ = (Index("uq_contact_job_person_run", "person_id", "run_id", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("global_people.id"), index=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("discovery_runs.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class WorkerHeartbeat(Base):

@@ -1,11 +1,9 @@
 """The individual public search engines.
 
-All of them go through ``ddgs``, which is already a dependency and ships
-maintained implementations for several backends. When ``ddgs``'s legacy
-``google.com/wml/search`` endpoint returns 403/empty, or when ``search.yahoo.com``
-(Bing) serves decoy Wikipedia/YouTube pages for ``site:linkedin.com/in`` queries,
-we transparently query Google's index via ``search.yahoo.co.jp`` using ``primp``
-and ``lxml`` (both already installed alongside ``ddgs``).
+The live client does not call ``ddgs`` or ``primp``. It fetches
+``html.duckduckgo.com`` and, only when that page has no results,
+``search.yahoo.co.jp``, both through the pinned address check. A test can still
+pass a fake client whose ``text`` method returns hits. Result pages are not opened.
 
 Each engine owns its own throttle, which is what makes a rotation faster than a
 single engine: one shared delay serialised every query behind it.
@@ -14,7 +12,6 @@ single engine: one shared delay serialised every query behind it.
 from __future__ import annotations
 
 import os
-import re
 import time
 from typing import Any
 
@@ -42,59 +39,6 @@ DEFAULT_BACKENDS: tuple[tuple[str, float], ...] = (
 #: Phrases these backends use for a genuine zero-result answer, which the library
 #: raises as an exception rather than returning an empty list.
 _EMPTY_MARKERS = ("no results found", "no results")
-
-
-def _clean_title(text: str) -> str:
-    cleaned = re.sub(r"\s+", " ", (text or "")).strip()
-    cleaned = re.sub(r"\s*[\|\-–—]\s*LinkedIn\s*$", "", cleaned, flags=re.IGNORECASE)
-    return cleaned
-
-
-def _google_via_yahoo_jp(query: str, *, max_results: int = 10, page: int = 1) -> list[dict[str, str]]:
-    """Query Google's web index via search.yahoo.co.jp (LY Corp)."""
-    import primp
-    from lxml import html
-
-    client = primp.Client(
-        impersonate="random",
-        impersonate_os="random",
-        timeout=int(REQUEST_TIMEOUT),
-    )
-    start_offset = max(1, (page - 1) * 10 + 1)
-    resp = client.get(
-        "https://search.yahoo.co.jp/search",
-        params={"p": query, "b": str(start_offset)},
-    )
-    if resp.status_code >= 400 or not resp.text:
-        return []
-    tree = html.fromstring(resp.text)
-    cards = tree.xpath("//div[contains(@class, 'sw-CardBase') and .//h3]")
-    results: list[dict[str, str]] = []
-    for card in cards:
-        title = _clean_title(" ".join(card.xpath(".//h3//text()")))
-        hrefs = card.xpath(".//a[.//h3]/@href") or card.xpath(".//a/@href")
-        href = (hrefs[0] if hrefs else "").strip()
-        if not title or not href.startswith("http"):
-            continue
-        if "search.yahoo.co.jp" in href:
-            continue
-        body = re.sub(
-            r"\s+",
-            " ",
-            " ".join(card.xpath(".//*[contains(@class, 'sw-Card__summary')]//text()")),
-        ).strip()
-        results.append({"title": title, "href": href, "body": body})
-    return results[:max_results]
-
-
-def _has_valid_site_hits(query: str, hits: list[dict[str, Any]]) -> bool:
-    """Reject Bing/Yahoo decoy SERPs (Wikipedia/YouTube) when site:linkedin.com was requested."""
-    if "site:linkedin.com" not in (query or "").lower():
-        return bool(hits)
-    return any(
-        "linkedin.com" in str(h.get("href") or h.get("link") or h.get("url") or "").lower()
-        for h in hits
-    )
 
 
 class DdgsEngine:
@@ -133,14 +77,10 @@ class DdgsEngine:
 
     def _query(self, client: Any, query: str, max_results: int, page: int) -> list[dict]:
         is_real_ddgs = type(client).__module__.startswith(("ddgs", "duckduckgo_search"))
+        if is_real_ddgs:
+            from backend.services.search_engines.pinned import pinned_search
 
-        if is_real_ddgs and self.backend == "google":
-            try:
-                jp_hits = _google_via_yahoo_jp(query, max_results=max_results, page=page)
-                if jp_hits and _has_valid_site_hits(query, jp_hits):
-                    return jp_hits
-            except Exception:
-                pass
+            return pinned_search(query, max_results=max_results, page=page)
 
         attempts = (
             {"backend": self.backend, "max_results": max_results, "page": page},
@@ -157,14 +97,6 @@ class DdgsEngine:
             except Exception as exc:
                 last = exc
                 break
-
-        if is_real_ddgs and (not raw or not _has_valid_site_hits(query, raw)):
-            try:
-                jp_hits = _google_via_yahoo_jp(query, max_results=max_results, page=page)
-                if jp_hits and _has_valid_site_hits(query, jp_hits):
-                    return jp_hits
-            except Exception:
-                pass
 
         if last is not None and not raw:
             raise last

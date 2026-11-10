@@ -22,6 +22,7 @@ def ingest_hits(db, hits: list[dict]) -> dict:
     """Normalize, dedup, and store public hits. Suppression skips a hit. Nothing private is copied."""
     before = db.query(GlobalPerson.id).count()
     suppressed = 0
+    new_ids: list[int] = []
     for hit in hits:
         prospect = PublicProspect(
             full_name=str(hit.get("full_name") or ""),
@@ -40,14 +41,19 @@ def ingest_hits(db, hits: list[dict]) -> dict:
             source_url=public_http_url(hit.get("source_url")),
         )
         try:
-            upsert_public_prospect(db, prospect)
+            count_before = db.query(GlobalPerson.id).count()
+            person = upsert_public_prospect(db, prospect)
         except PrivateEvidenceError:
             suppressed += 1
             db.rollback()
+            continue
+        if db.query(GlobalPerson.id).count() > count_before and person is not None:
+            new_ids.append(person.id)
     after = db.query(GlobalPerson.id).count()
     ingested = max(0, after - before)
     return {
         "ingested": ingested,
         "suppressed": suppressed,
         "duplicates": max(0, len(hits) - ingested - suppressed),
+        "new_ids": new_ids,
     }

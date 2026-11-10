@@ -151,6 +151,8 @@ function Engine({ onError }) {
           max_runs_per_tick: Number(settings.max_runs_per_tick),
           max_runs_per_hour: Number(settings.max_runs_per_hour),
           max_runs_per_day: Number(settings.max_runs_per_day),
+          store_name_only: Boolean(settings.store_name_only),
+          serve_name_only: Boolean(settings.serve_name_only),
         },
       }));
     } catch (err) {
@@ -209,6 +211,22 @@ function Engine({ onError }) {
             onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
           />
           Allow the worker to plan schedules
+        </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={settings?.store_name_only !== false}
+            onChange={(e) => setSettings({ ...settings, store_name_only: e.target.checked })}
+          />
+          Keep people who still have no email and no phone
+        </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={settings?.serve_name_only !== false}
+            onChange={(e) => setSettings({ ...settings, serve_name_only: e.target.checked })}
+          />
+          Offer name-only people to customers after people with an email or phone
         </label>
         <div className="people-toolbar">
           <label>Concurrency
@@ -1320,6 +1338,9 @@ function CacheHealth({ onError }) {
         <div className="metric"><span>Companies</span><strong>{data.companies}</strong></div>
         <div className="metric"><span>Stale fields</span><strong>{data.stale_fields}</strong></div>
         <div className="metric"><span>Fresh fields</span><strong>{data.fresh_fields}</strong></div>
+        <div className="metric"><span>With email</span><strong>{data.with_email ?? 0}</strong></div>
+        <div className="metric"><span>With phone</span><strong>{data.with_phone ?? 0}</strong></div>
+        <div className="metric"><span>Name only</span><strong>{data.name_only ?? 0}</strong></div>
       </div>
       <p className="meta">Discovered today {data.people_today}. This week {data.people_week}. Ineligible evidence rows {data.ineligible_evidence}.</p>
       <h3>Distribution</h3>

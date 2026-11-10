@@ -111,6 +111,10 @@ def promote_qualified(db: Session, job: SearchJob) -> int:
         for candidate in batch:
             if candidate.identity_key in existing_keys:
                 continue
+            from backend.services.discovery_engine.settings import ensure_settings
+
+            if not ensure_settings(db).serve_name_only and not (getattr(candidate, "email", None) or "").strip() and not (getattr(candidate, "phone", None) or "").strip():
+                continue
             from backend.services.discovery_engine.distribution import canonical_key_for, customer_key_for, try_allocate
 
             canonical = canonical_key_for(

@@ -383,6 +383,8 @@ class LimitsIn(BaseModel):
     max_runs_per_tick: int = 5
     max_runs_per_hour: int = 4
     max_runs_per_day: int = 24
+    store_name_only: bool = True
+    serve_name_only: bool = True
 
 
 class CorrectionIn(BaseModel):
@@ -406,7 +408,9 @@ def _settings_out(row) -> dict:
         "max_runs_per_tick": row.max_runs_per_tick,
         "max_runs_per_hour": row.max_runs_per_hour,
         "max_runs_per_day": row.max_runs_per_day,
-        "detail": "Scheduling is off until this switch is saved on. An autonomous target then uses only html.duckduckgo.com. Paid email runs only when that switch is on, the channel is not paused, and a reservation succeeds.",
+        "store_name_only": bool(getattr(row, "store_name_only", True)),
+        "serve_name_only": bool(getattr(row, "serve_name_only", True)),
+        "detail": "Scheduling is off until this switch is saved on. An autonomous target then uses only html.duckduckgo.com. Contact enrichment reads the company site first. Paid email runs only when that switch is on, the channel is not paused, and a reservation succeeds.",
     }
 
 
@@ -602,6 +606,8 @@ def patch_settings(
             max_runs_per_tick=body.max_runs_per_tick,
             max_runs_per_hour=body.max_runs_per_hour,
             max_runs_per_day=body.max_runs_per_day,
+            store_name_only=body.store_name_only,
+            serve_name_only=body.serve_name_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

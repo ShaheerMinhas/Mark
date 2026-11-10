@@ -145,9 +145,20 @@ def _apply_email(db: Session, person: GlobalPerson, result: AdapterResult, provi
     status = result.email_status if result.email_status in _STATUSES else "unknown"
     if status == "inferred":
         status = "inferred"
+    if person.email and person.email_status in {"found", "verified"} and status == "inferred":
+        return
     person.email_status = status
     if result.email and status != "not_found":
         person.email = result.email.strip().lower()
+    if status == "verified":
+        person.email_confidence = "verified"
+        person.contact_note = "A provider marked this address verified."
+    elif status == "inferred":
+        person.email_confidence = "inferred"
+        person.contact_note = "A provider returned a pattern. The mailbox was not verified."
+    elif status == "found":
+        person.email_confidence = "provider"
+        person.contact_note = "A provider returned this address. It was not verified."
     rules = load_rules(db)
     tier, score = quality_tier(
         rules=rules,
@@ -264,8 +275,15 @@ def _candidates(db: Session, target: DiscoveryTarget, rules: dict) -> list[Globa
 
 
 def run_email_stage(db: Session, run: DiscoveryRun, target: DiscoveryTarget, settings: DiscoverySettings, attempt: int) -> tuple[str, str]:
+    from backend.services.discovery_engine.contacts import process_contact_jobs
+
+    public_detail = process_contact_jobs(db, run.id)
     if not settings.paid_providers_enabled:
-        return "skipped", "Paid providers are disabled. No credential or budget ledger is consulted because spend cannot be reserved."
+        return (
+            "skipped",
+            public_detail
+            + " Paid providers are disabled. No credential or budget ledger is consulted because spend cannot be reserved.",
+        )
     if settings.pause_email:
         return "skipped", "Email enrichment is paused. No provider was called."
     rules = field_rules(db)
@@ -309,9 +327,10 @@ def run_email_stage(db: Session, run: DiscoveryRun, target: DiscoveryTarget, set
         db.commit()
     db.commit()
     if called == 0 and fresh == 0 and denied == 0 and not people:
-        return "skipped", "No cached person matched this target. No provider was called."
+        return "skipped", public_detail + " No cached person matched this target. No provider was called."
     return "classified", (
-        f"Email calls {called}. Fresh skips {fresh}. Denied or suppressed {denied}. "
+        f"{public_detail} Email calls {called}. Fresh skips {fresh}. Denied or suppressed {denied}. "
+        "Configured adapters return an email, not a phone number. "
         "Company research was not called. Inferred addresses were not marked verified."
     )
 
