@@ -538,6 +538,20 @@ export default function PeopleView() {
                 </div>
               )}
 
+              <button
+                type="button"
+                className="ghost"
+                onClick={async () => {
+                  setError("");
+                  try {
+                    const result = await api(`/api/people/${selected.id}/replace`, { method: "POST" });
+                    setBanner(result.detail || "Replacement checked.");
+                    load();
+                  } catch (err) {
+                    setError(err.message || "Could not replace this lead");
+                  }
+                }}
+              >Replace this lead</button>
               <label htmlFor="people-stage">Lifecycle Status</label>
               <select
                 id="people-stage"

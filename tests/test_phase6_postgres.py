@@ -184,3 +184,53 @@ def test_postgres_queue_budget_and_upsert_races():
     assert check.query(GlobalPerson).count() == 1
     check.close()
     engine.dispose()
+
+
+def test_postgres_distribution_last_slot_is_atomic():
+    from backend.database import upgrade_database
+    from backend.services.discovery_engine.distribution import ensure_policy, try_allocate
+
+    engine = _engine()
+    _reset(engine)
+    upgrade_database(engine)
+    Session = sessionmaker(bind=engine)
+    setup = Session()
+    ensure_policy(setup)
+    setup.commit()
+    for index in range(2):
+        assert try_allocate(
+            setup,
+            canonical_key="profile:https://www.linkedin.com/in/example-slot",
+            customer_key=f"user:{index}",
+            person_id=None,
+            search_job_id=None,
+            lead_record_id=None,
+        ) == "allocated"
+        setup.commit()
+    setup.close()
+    results = []
+
+    def claim(customer):
+        session = Session()
+        try:
+            results.append(
+                try_allocate(
+                    session,
+                    canonical_key="profile:https://www.linkedin.com/in/example-slot",
+                    customer_key=customer,
+                    person_id=None,
+                    search_job_id=None,
+                    lead_record_id=None,
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+    threads = [threading.Thread(target=claim, args=(f"user:{index}",)) for index in (2, 3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(results) == ["allocated", "saturated"]
+    engine.dispose()

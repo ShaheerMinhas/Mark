@@ -1,6 +1,6 @@
 # Discovery engine
 
-This document is the audit, the target design, and the acceptance checklist for a persistent B2B discovery cache. Phases 1 through 5 are implemented. Phase 6 is not. Live public search stays off, and paid global calls stay off until an operator opens every gate below.
+This document is the audit, the target design, and the acceptance checklist for a persistent B2B discovery cache. Phases 1 through 6 are implemented with the gaps named in the later sections. Autonomous search and paid global calls stay off until an operator opens the gates below.
 
 ## Audit (current system)
 
@@ -95,7 +95,7 @@ Implemented for a platform operator only: Overview, Discovery engine, Cached lea
 
 Archive sets `archived_at` and keeps evidence. Corrections keep the previous value as evidence. CSV export is admin-only and prefixes formula characters. Provider management, usage costs, and cache health are not pages.
 
-Scheduling can be saved as enabled. Live search and paid calls remain hard-off, so a run-now job records skipped stages. Pause does not delete queued runs.
+Scheduling can be saved as enabled. A target that is not autonomous still records a skipped discover stage. Pause does not delete queued runs. Paid calls remain off until their own gates pass.
 
 ### Phase 4 — targeting
 
@@ -125,7 +125,13 @@ What now works: a fresh Postgres database and a legacy database that already has
 
 There is no separate System Settings navigation. The switches that exist are on Providers: paid calls, the three pauses, public-search intent, and retention days. Phone numbers still require evidence. Unknown provider charges stay reserved at the maximum. Admin list, sort, export, correction, and archive were already backed by the database; export stays capped at 100 rows.
 
-What still does not discover on the network: saving “record public-search intent” does not call the legacy search clients. Those clients fetch arbitrary result URLs and are outside the outbound policy. The discover stage then records `blocked` and sends no request. A fixture source can still pass people through normalize, dedup, company association, evidence, and a customer search. Company research remains `unavailable`. Real provider HTTP, invoices, and DNS resolution of the public internet are not part of this checkpoint. The suite passing is not a production-ready claim.
+An active autonomous technology target, with scheduling enabled, asks `html.duckduckgo.com` for one varied query every 120 minutes through the pinned fetch guard. A fresh cache does not skip that run. It does not open the result pages and it does not invent an email or a phone. The browser does not run that loop. `python -m backend.discovery_worker` does, and only after an operator starts the target. Saving the target keeps it paused. The interactive customer search can still use the older multi-engine client, which is not DNS-pinned. That client is not the autonomous path.
+
+Replacement looks in the cache first. The original lead, its notes, and its CRM stay. When scheduling is enabled and an autonomous target is active, one pinned query can run if the cache has nobody else eligible. Otherwise the answer is exhausted. A profile learned later for the same person keeps the recipient count already recorded. The customer is the organization on the search when there is one, otherwise the individual account.
+
+A shared identity can be given to three distinct customers by default, or two if an operator lowers the limit. The customer is the organization on the search when there is one, otherwise the individual account. Teammates and repeat searches do not add a recipient. After the limit, new customers do not receive that identity. Customers who already have a copy keep it, including notes and CRM. Replacing a lead adds another person and keeps the original. Lowering the limit does not delete anyone. Raising it requires confirmation and does not recycle an identity.
+
+What still does not discover on the network during development: nothing is activated by default. The interactive multi-engine customer search still uses the existing search client, which is not DNS-pinned. Company research remains unavailable. Paid provider HTTP and invoices are not part of this checkpoint. A fixture source can pass people through normalize, dedup, company association, evidence, and a customer search. The suite passing is not a production-ready claim.
 
 A 2,000-row country and title count on the local SQLite file is bounded by the test at under 5 seconds. That is a regression guard, not a throughput number.
 
@@ -161,7 +167,7 @@ A 2,000-row country and title count on the local SQLite file is bounded by the t
 - [x] A disabled run does not call public search or paid email providers.
 - [x] Fresh cache rows are not refreshed.
 - [x] Overview says "Email lookup queued" when discovery is finished and the enrichment job is only queued.
-- [x] Paid enrichment has a budget ledger and stays off unless every gate passes. Live public search stays hard-off.
+- [x] Paid enrichment has a budget ledger and stays off unless every gate passes. The legacy live-search flag stays off. An autonomous target uses the pinned HTML search only after an operator enables scheduling and starts the target.
 - [x] Two Postgres sessions claim two queue rows with SKIP LOCKED. Multi-worker SQLite is still not a supported production lock.
 
 ### Phase 3
@@ -211,7 +217,7 @@ These are the seventeen checks for this checkpoint.
 - [x] 11. An unreadable credential fails closed. Re-encryption with the wrong old key does not replace the stored secret.
 - [x] 12. Log lines redact secret-shaped values.
 - [x] 13. New fetches check scheme, port, userinfo, and every resolved address and redirect. Legacy search and public-email fetchers do not use this guard.
-- [ ] 14. Configured live public discovery still sends no network request. The operator intent can be saved. The legacy search client is not cleared.
+- [x] 14. An operator-started autonomous target fetches only `html.duckduckgo.com` through the pinned guard, and only while scheduling is enabled. Defaults stay off. The interactive multi-engine client is still not DNS-pinned.
 - [x] 15. Fixture hits pass normalize, dedup, company, evidence, and into a customer search. A private source URL is dropped. A phone without evidence is dropped.
 - [x] 16. Company research stays `unavailable`.
 - [x] 17. Deployment notes describe separate web and worker processes, backup and restore, and the gates that stay off.

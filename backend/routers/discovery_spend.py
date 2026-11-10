@@ -229,6 +229,35 @@ def list_budgets(admin: User = Depends(require_platform_admin), db: Session = De
     return {"items": items}
 
 
+class DistributionIn(BaseModel):
+    max_customers: int
+    confirm_increase: bool = False
+
+
+@router.get("/distribution")
+def get_distribution(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    from backend.services.discovery_engine.distribution import distribution_summary
+
+    return distribution_summary(db)
+
+
+@router.patch("/distribution")
+def patch_distribution(
+    body: DistributionIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    from backend.services.discovery_engine.distribution import distribution_summary, set_max_customers
+
+    try:
+        set_max_customers(db, body.max_customers, confirm_increase=body.confirm_increase)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return distribution_summary(db)
+
+
 @router.get("/usage")
 def get_usage(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
     del admin

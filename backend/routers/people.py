@@ -283,6 +283,166 @@ def list_people(
     )
 
 
+@router.post("/{lead_id}/replace")
+def replace_person(
+    lead_id: int,
+    organization_id: int | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Keep the current lead and ask for a different eligible cached person.
+
+    The original assignment still counts toward the distribution limit.
+    """
+    from backend.services.discovery_engine.distribution import (
+        canonical_key_for,
+        customer_key_for,
+        try_allocate,
+    )
+    from backend.services.discovery_engine.suppression import is_suppressed
+    from backend.services.global_cache.match import match_people, query_from_search_filters
+    from backend.services.identity import identity_key
+
+    lead = (
+        _owned_leads(db, user, organization_id)
+        .options(joinedload(LeadRecord.search_job))
+        .filter(LeadRecord.id == lead_id)
+        .first()
+    )
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    job = lead.search_job
+    if lead.replaced_at is None:
+        lead.replaced_at = datetime.utcnow()
+        _record_activity(db, lead.id, user.id, "replaced", "Asked for a different cached person")
+        db.commit()
+    excluded = {
+        key
+        for (key,) in db.query(LeadRecord.identity_key)
+        .filter(LeadRecord.search_job_id == job.id, LeadRecord.identity_key.isnot(None))
+        .all()
+    }
+
+    def _take_next(detail: str) -> dict | None:
+        query = query_from_search_filters(dict(job.filters or {}))
+        query.customer_key = customer_key_for(job)
+        from backend.services.discovery_engine.distribution import ensure_policy
+
+        query.max_recipients = int(ensure_policy(db).max_customers or 3)
+        query.page_size = 25
+        _total, rows = match_people(db, query)
+        for person in rows:
+            if is_suppressed(db, email=person.email, domain=person.domain, profile_url=person.profile_url):
+                continue
+            key = identity_key(
+                linkedin_url=person.profile_url or "",
+                name=person.full_name or "",
+                company=person.company_name or "",
+                title=person.title or "",
+            )
+            if not key or key in excluded:
+                continue
+            canonical = canonical_key_for(
+                profile_url=person.profile_url or "",
+                name=person.full_name or "",
+                domain=person.domain or "",
+            )
+            if canonical is None:
+                continue
+            decision = try_allocate(
+                db,
+                canonical_key=canonical,
+                customer_key=customer_key_for(job),
+                person_id=person.id,
+                search_job_id=job.id,
+                lead_record_id=None,
+            )
+            if decision == "saturated":
+                continue
+            from backend.models import CandidateStatus, EnrichmentStatus, SearchCandidate
+
+            candidate = SearchCandidate(
+                search_job_id=job.id,
+                identity_key=key,
+                name=person.full_name,
+                title=person.title,
+                company=person.company_name,
+                location=person.city or person.country_code,
+                linkedin_url=person.profile_url,
+                linkedin_url_normalized=person.profile_url_normalized,
+                source_url=person.profile_url,
+                status=CandidateStatus.QUALIFIED.value,
+                relevance_score=float(person.quality_score or 0),
+            )
+            db.add(candidate)
+            db.flush()
+            replacement = LeadRecord(
+                search_job_id=job.id,
+                candidate_id=candidate.id,
+                identity_key=key,
+                linkedin_url_normalized=person.profile_url_normalized,
+                name=person.full_name or "Unknown",
+                email=person.email,
+                email_status=person.email_status,
+                email_source="shared_cache" if person.email else None,
+                phone=person.phone if person.phone else None,
+                work_designation=person.title,
+                company_name=person.company_name,
+                company_domain=person.domain,
+                linkedin_url=person.profile_url,
+                relevance_score=float(person.quality_score or 0),
+                enrichment_status=EnrichmentStatus.PENDING.value,
+                tags=[],
+            )
+            db.add(replacement)
+            db.commit()
+            return {
+                "status": "replaced",
+                "kept_lead_id": lead.id,
+                "lead_id": replacement.id,
+                "detail": detail,
+            }
+        return None
+
+    found = _take_next("A different cached person was added. The original lead was kept.")
+    if found is not None:
+        return found
+    from backend.models import DiscoveryTarget
+    from backend.services.discovery_engine.settings import ensure_settings
+
+    if not ensure_settings(db).enabled:
+        return {
+            "status": "exhausted",
+            "kept_lead_id": lead.id,
+            "detail": "No other eligible cached person is available. The original lead was kept.",
+        }
+    target = (
+        db.query(DiscoveryTarget)
+        .filter(DiscoveryTarget.autonomous.is_(True), DiscoveryTarget.scheduling_status == "active")
+        .order_by(DiscoveryTarget.priority.asc(), DiscoveryTarget.id.asc())
+        .first()
+    )
+    if target is None:
+        return {
+            "status": "exhausted",
+            "kept_lead_id": lead.id,
+            "detail": "No other eligible cached person is available, and no autonomous search is active. The original lead was kept.",
+        }
+    from backend.services.discovery_engine.ingest import collect_public_hits, ingest_hits
+
+    hits, live_detail = collect_public_hits(target)
+    if hits:
+        ingest_hits(db, hits)
+        found = _take_next("A different person from the autonomous search was added. The original lead was kept.")
+        if found is not None:
+            return found
+    return {
+        "status": "exhausted",
+        "kept_lead_id": lead.id,
+        "detail": live_detail or "No other eligible person is available. The original lead was kept.",
+    }
+
+
 @router.get("/{lead_id}")
 def get_person_detail(
     lead_id: int,

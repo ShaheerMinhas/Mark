@@ -92,11 +92,11 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
     discover_status = "skipped"
     if not settings.enabled:
         discover_detail = "Discovery is off. No provider was called."
-    elif _cache_is_fresh(db, target, now):
+    elif not getattr(target, "autonomous", False) and _cache_is_fresh(db, target, now):
         discover_detail = "Matching cache rows are still fresh. No refresh was started."
         discover_status = "skipped_fresh"
-    elif not settings.allow_public_search:
-        discover_detail = "Live public search is off. No request was sent."
+    elif not getattr(target, "autonomous", False):
+        discover_detail = "This target is not set to run on its own. No request was sent."
         discover_status = "skipped"
     else:
         from backend.services.discovery_engine.ingest import collect_public_hits, ingest_hits

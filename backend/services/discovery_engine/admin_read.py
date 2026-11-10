@@ -112,7 +112,7 @@ def overview(db: Session) -> dict:
             "pause_email": bool(getattr(settings, "pause_email", True)),
             "pause_verify": bool(getattr(settings, "pause_verify", True)),
             "pause_enrichment": bool(getattr(settings, "pause_enrichment", True)),
-            "detail": "Live public search stays off. Paid email runs only when that switch is on and a reservation succeeds.",
+            "detail": "Autonomous search stays off until a target is started. Paid email runs only when that switch is on and a reservation succeeds.",
         },
         "worker": worker_status(db),
         "scheduler": {

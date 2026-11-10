@@ -271,6 +271,7 @@ class LeadRecord(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     search_job_id: Mapped[int] = mapped_column(ForeignKey("search_jobs.id"), index=True)
+    replaced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -739,6 +740,7 @@ class GlobalPerson(Base):
         Index("ix_global_people_tier_updated", "quality_tier", "updated_at"),
         Index("ix_global_people_name", "name_normalized"),
         Index("ix_global_people_profile", "profile_url_normalized"),
+        Index("ix_global_people_canonical", "canonical_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -765,6 +767,7 @@ class GlobalPerson(Base):
     city: Mapped[str | None] = mapped_column(String(128), nullable=True)
     profile_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     profile_url_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    canonical_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     email_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -890,6 +893,9 @@ class DiscoveryTarget(Base):
     industries: Mapped[list] = mapped_column(JSON, default=list)
     titles: Mapped[list] = mapped_column(JSON, default=list)
     criteria: Mapped[dict] = mapped_column(JSON, default=dict)
+    autonomous: Mapped[bool] = mapped_column(Boolean, default=False)
+    rotation_cursor: Mapped[int] = mapped_column(Integer, default=0)
+    last_query: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -1069,6 +1075,44 @@ class GlobalFieldFreshness(Base):
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DistributionPolicy(Base):
+    """How many distinct customers may receive one shared identity. Default is 3."""
+
+    __tablename__ = "distribution_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    max_customers: Mapped[int] = mapped_column(Integer, default=3)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DistributionSlot(Base):
+    """One shared identity. The count is distinct customers, not views."""
+
+    __tablename__ = "distribution_slots"
+
+    canonical_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    recipient_count: Mapped[int] = mapped_column(Integer, default=0)
+    saturated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class LeadAllocation(Base):
+    """A customer received this identity. Repeating the same customer does not add a recipient."""
+
+    __tablename__ = "lead_allocations"
+    __table_args__ = (
+        Index("uq_lead_allocation_customer", "canonical_key", "customer_key", unique=True),
+        Index("ix_lead_allocation_customer", "customer_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    canonical_key: Mapped[str] = mapped_column(String(255))
+    customer_key: Mapped[str] = mapped_column(String(64))
+    person_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    search_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lead_record_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class WorkerHeartbeat(Base):

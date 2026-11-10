@@ -13,11 +13,9 @@ from backend.services.global_cache.upsert import PrivateEvidenceError, PublicPro
 
 
 def collect_public_hits(target) -> tuple[list[dict], str]:
-    del target
-    return [], (
-        "Live public search is not cleared for network fetching. "
-        "The legacy search clients are outside the outbound URL policy. No request was sent."
-    )
+    from backend.services.discovery_engine.public_source import search_public_profiles
+
+    return search_public_profiles(target)
 
 
 def ingest_hits(db, hits: list[dict]) -> dict:

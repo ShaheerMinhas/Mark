@@ -339,6 +339,16 @@ def upsert_public_prospect(db: Session, prospect: PublicProspect, _attempt: int 
     if profile and not person.profile_url_normalized:
         person.profile_url = prospect.profile_url
         person.profile_url_normalized = profile
+    from backend.services.discovery_engine.distribution import canonical_key_for, rebind_canonical
+
+    next_key = canonical_key_for(
+        profile_url=person.profile_url or "",
+        name=person.full_name or "",
+        domain=person.domain or "",
+    )
+    if person.canonical_key and next_key and person.canonical_key != next_key:
+        rebind_canonical(db, person.canonical_key, next_key)
+    person.canonical_key = next_key or person.canonical_key
 
     blocked: set[str] = set()
     if hold_email:

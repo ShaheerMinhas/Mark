@@ -508,6 +508,7 @@ def usage_report(db: Session) -> dict:
 
 
 def cache_health(db: Session, *, now: datetime | None = None) -> dict:
+    from backend.services.discovery_engine.distribution import distribution_summary
     now = now or datetime.utcnow()
     day = now - timedelta(days=1)
     week = now - timedelta(days=7)
@@ -547,4 +548,5 @@ def cache_health(db: Session, *, now: datetime | None = None) -> dict:
         "fresh_fields": int(fresh),
         "ineligible_evidence": int(ineligible),
         "detail": "Stale means next_due_at is in the past. Counts are SQL aggregates. Cost is on the usage report.",
+        "distribution": distribution_summary(db),
     }

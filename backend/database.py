@@ -75,12 +75,12 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
     "global_people": (
         ("archived_at", "DATETIME"),
         ("correction_note", "TEXT"),
+        ("canonical_key", "VARCHAR(255)"),
     ),
     "global_companies": (
         ("archived_at", "DATETIME"),
         ("correction_note", "TEXT"),
     ),
-    "discovery_targets": (("criteria", "JSON"),),
     "search_jobs": (
         ("progress", "INTEGER DEFAULT 0"),
         ("current_stage", "VARCHAR(64)"),
@@ -131,6 +131,13 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("custom_fields", "JSON"),
         ("score_breakdown", "JSON"),
         ("updated_at", "DATETIME"),
+        ("replaced_at", "DATETIME"),
+    ),
+    "discovery_targets": (
+        ("criteria", "JSON"),
+        ("rotation_cursor", "INTEGER DEFAULT 0"),
+        ("autonomous", "BOOLEAN DEFAULT 0"),
+        ("last_query", "TEXT"),
     ),
 }
 

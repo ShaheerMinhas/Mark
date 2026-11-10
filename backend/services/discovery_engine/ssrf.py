@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import ssl
 from urllib.parse import urljoin, urlparse
 
 _BLOCKED_HOSTS = {"localhost", "metadata.google.internal", "metadata"}
@@ -78,11 +79,60 @@ def default_resolver(hostname: str) -> list[str]:
     return found
 
 
+def pinned_opener(url: str, addresses: list[str], timeout: float, max_bytes: int):
+    """Connect to a checked address. The Host header and TLS name stay the original host.
+
+    Redirects are not followed here. ``safe_fetch`` checks the next URL itself.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    port = 443 if parsed.scheme == "https" else 80
+    sock = socket.create_connection((addresses[0], port), timeout=timeout)
+    try:
+        if parsed.scheme == "https":
+            context = ssl.create_default_context()
+            sock = context.wrap_socket(sock, server_hostname=host)
+        sock.settimeout(timeout)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        payload = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "User-Agent: MarkBot/1.0\r\n"
+            "Accept: text/html\r\n"
+            "Connection: close\r\n\r\n"
+        )
+        sock.sendall(payload.encode("ascii"))
+        data = b""
+        while len(data) <= max_bytes + 65536:
+            chunk = sock.recv(8192)
+            if not chunk:
+                break
+            data += chunk
+    finally:
+        sock.close()
+    head, _, body = data.partition(b"\r\n\r\n")
+    lines = head.decode("iso-8859-1", errors="replace").split("\r\n")
+    try:
+        status = int(lines[0].split(" ", 2)[1])
+    except (IndexError, ValueError) as exc:
+        raise SsrfError("response status was not readable") from exc
+    location = None
+    for line in lines[1:]:
+        if line.lower().startswith("location:"):
+            location = line.split(":", 1)[1].strip()
+    if len(body) > max_bytes:
+        body = body[:max_bytes]
+    return status, location, body
+
+
 def safe_fetch(
     url: str,
     *,
     resolver=default_resolver,
     opener,
+    allowed_hosts: set[str] | None = None,
     max_redirects: int = _MAX_REDIRECTS,
     max_bytes: int = _MAX_BYTES,
     timeout: float = 5.0,
@@ -96,6 +146,8 @@ def safe_fetch(
     for _ in range(max_redirects + 1):
         parsed = _parse_public_url(current)
         host = parsed.hostname.strip(".").lower()
+        if allowed_hosts is not None and host not in allowed_hosts:
+            raise SsrfError("host is outside the allowed set")
         try:
             addresses = list(resolver(host))
         except OSError as exc:

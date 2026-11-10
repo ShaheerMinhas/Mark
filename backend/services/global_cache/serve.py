@@ -36,7 +36,11 @@ def _requested(filters: dict) -> int:
 def serve_cached_people(db: Session, job: SearchJob) -> CacheCoverage:
     filters = dict(job.filters or {})
     requested = _requested(filters)
+    from backend.services.discovery_engine.distribution import customer_key_for, ensure_policy
+
     query = query_from_search_filters(filters)
+    query.customer_key = customer_key_for(job)
+    query.max_recipients = int(ensure_policy(db).max_customers or 3)
     query.page_size = min(100, requested)
     matched, rows = match_people(db, query)
     existing = {
@@ -65,6 +69,25 @@ def serve_cached_people(db: Session, job: SearchJob) -> CacheCoverage:
             title=person.title or "",
         )
         if not key or key in existing:
+            continue
+        from backend.services.discovery_engine.distribution import canonical_key_for, customer_key_for, try_allocate
+
+        canonical = canonical_key_for(
+            profile_url=person.profile_url or "",
+            name=person.full_name or "",
+            domain=person.domain or "",
+        )
+        if canonical is None:
+            continue
+        decision = try_allocate(
+            db,
+            canonical_key=canonical,
+            customer_key=customer_key_for(job),
+            person_id=person.id,
+            search_job_id=job.id,
+            lead_record_id=None,
+        )
+        if decision == "saturated":
             continue
         existing.add(key)
         candidate = SearchCandidate(

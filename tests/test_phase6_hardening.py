@@ -128,7 +128,7 @@ def test_fixture_hits_reach_the_cache_and_a_customer_search(db, user, monkeypatc
     settings.enabled = True
     settings.allow_public_search = True
     db.commit()
-    target = DiscoveryTarget(name="Example fixture source", scheduling_status="paused", countries=["SE"], titles=["cto"])
+    target = DiscoveryTarget(name="Example fixture source", scheduling_status="paused", countries=["SE"], titles=["cto"], autonomous=True)
     db.add(target)
     db.commit()
     run = DiscoveryRun(target_id=target.id, idempotency_key="fixture-e2e", status="queued", scheduled_for=datetime.utcnow())
@@ -159,7 +159,8 @@ def test_fixture_hits_reach_the_cache_and_a_customer_search(db, user, monkeypatc
     lead = db.query(LeadRecord).filter(LeadRecord.search_job_id == job.id).one()
     assert lead.name == "Example Fixture Nora"
     assert not getattr(lead, "notes", None)
-    empty, detail = collect_public_hits(target)
+    quiet = DiscoveryTarget(name="Quiet", autonomous=False)
+    empty, detail = collect_public_hits(quiet)
     assert empty == []
     assert "No request was sent" in detail
 
@@ -187,7 +188,7 @@ def test_allowed_intent_still_blocks_the_network(db, monkeypatch):
         .filter(DiscoveryStageAttempt.run_id == run.id, DiscoveryStageAttempt.stage == "discover")
         .one()
     )
-    assert discover.status == "blocked"
+    assert discover.status == "skipped"
     assert "No request was sent" in discover.detail
     enrich = (
         db.query(DiscoveryStageAttempt)

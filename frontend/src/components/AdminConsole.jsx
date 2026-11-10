@@ -35,7 +35,7 @@ export default function AdminConsole() {
         <div>
           <h2>Operator</h2>
           <p className="lede">
-            Shared cache and schedules. Customer leads, notes, and CRM are not shown here. Live search and paid providers are off.
+            Shared cache and schedules. Customer leads, notes, and CRM are not shown here. Scheduling, autonomous search, and paid providers stay off until an operator turns them on.
           </p>
         </div>
       </div>
@@ -52,7 +52,7 @@ export default function AdminConsole() {
           </button>
         ))}
       </div>
-      <p className="meta">Live public search stays off. Paid email runs only after an operator enables it and a budget reservation succeeds. Company research has no adapter.</p>
+      <p className="meta">Autonomous search stays off until a target is started and the worker is running. It fetches only html.duckduckgo.com. Paid email runs only after an operator enables it and a budget reservation succeeds. Company research has no adapter.</p>
       {error && <p className="error-msg">{error}</p>}
       {section === "overview" && <Overview onError={setError} />}
       {section === "engine" && <Engine onError={setError} />}
@@ -113,18 +113,24 @@ function Overview({ onError }) {
 function Engine({ onError }) {
   const [settings, setSettings] = useState(null);
   const [targets, setTargets] = useState([]);
+  const [distribution, setDistribution] = useState(null);
+  const [limitChoice, setLimitChoice] = useState("3");
+  const [confirmIncrease, setConfirmIncrease] = useState(false);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsBody, targetBody] = await Promise.all([
+      const [settingsBody, targetBody, distributionBody] = await Promise.all([
         adminApi("/api/platform/discovery/settings"),
         adminApi("/api/platform/discovery/targets"),
+        adminApi("/api/platform/discovery/distribution"),
       ]);
       setSettings(settingsBody);
       setTargets(targetBody.items || []);
+      setDistribution(distributionBody);
+      setLimitChoice(String(distributionBody.max_customers || 3));
     } catch (err) {
       onError(err.message);
     } finally {
@@ -162,6 +168,21 @@ function Engine({ onError }) {
       });
       setName("");
       load();
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  async function saveDistribution(event) {
+    event.preventDefault();
+    const next = Number(limitChoice);
+    try {
+      const saved = await adminApi("/api/platform/discovery/distribution", {
+        method: "PATCH",
+        body: { max_customers: next, confirm_increase: confirmIncrease },
+      });
+      setDistribution(saved);
+      setConfirmIncrease(false);
     } catch (err) {
       onError(err.message);
     }
@@ -220,8 +241,8 @@ function Engine({ onError }) {
               {targets.map((target) => (
                 <tr key={target.id}>
                   <td>{target.name}</td>
-                  <td>{target.schedule_type} · {target.timezone}</td>
-                  <td>{target.scheduling_status}</td>
+                  <td>{target.autonomous ? "every 2 hours" : target.schedule_type} · {target.timezone}</td>
+                  <td>{target.scheduling_status}{target.autonomous ? " · own search" : ""}</td>
                   <td className="search-actions">
                     <button type="button" className="ghost" onClick={() => act(target.id, "start")}>Start</button>
                     <button type="button" className="ghost" onClick={() => act(target.id, "pause")}>Pause</button>
@@ -235,7 +256,24 @@ function Engine({ onError }) {
           </table>
         </div>
       )}
-      <p className="meta">Start and pause change whether new runs are planned. They do not delete a run that is already queued. Run now queues one job. This build will not call a provider.</p>
+      <form className="panel admin-note" onSubmit={saveDistribution}>
+        <p>A shared person can be given to this many distinct customers. The same workspace is one customer. Saving a lower number stops new customers and does not delete leads they already have. Raising the number needs the confirmation below and does not recycle an identity.</p>
+        <label>Customers per person
+          <select value={limitChoice} onChange={(e) => setLimitChoice(e.target.value)}>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={confirmIncrease} onChange={(e) => setConfirmIncrease(e.target.checked)} />
+          Confirm raising the limit
+        </label>
+        <button type="submit" className="ghost">Save customer limit</button>
+        {distribution && (
+          <p className="meta">Active identities {distribution.active_identities}. Saturated {distribution.saturated_identities}. Replacements {distribution.replacements}. {distribution.detail}</p>
+        )}
+      </form>
+      <p className="meta">Saving a target does not start it. Start runs an active technology target that is set to search on its own every two hours. The browser does not run that search. A separate process, python -m backend.discovery_worker, has to be running, and “Allow the worker to plan schedules” has to be on. A new target stays paused until you start it. Paid providers stay off until their own gates pass.</p>
     </>
   );
 }
@@ -478,6 +516,7 @@ function formFromTarget(target) {
     schedule_type: target?.schedule_type || "weekdays",
     timezone: target?.timezone || "UTC",
     interval_minutes: target?.interval_minutes ?? 60,
+    autonomous: Boolean(target?.autonomous),
     hour: target?.hour ?? 7,
     minute: target?.minute ?? 0,
     max_people_per_run: target?.max_people_per_run ?? 25,
@@ -613,10 +652,11 @@ function Targeting({ onError }) {
           max_people_per_run: Number(form.max_people_per_run),
           max_queries_per_run: Number(form.max_queries_per_run),
           refresh_hours: Number(form.refresh_hours),
+          autonomous: Boolean(form.autonomous),
           criteria,
         },
       });
-      setNotice("Saved. The target stays in its current scheduling state.");
+      setNotice("Saved. This does not start the target. Start it from Discovery engine after the worker is running.");
       setTargets((current) => current.map((item) => (item.id === saved.id ? saved : item)));
     } catch (err) {
       onError(err.message);
@@ -659,7 +699,15 @@ function Targeting({ onError }) {
 
   return (
     <form className="panel admin-note" onSubmit={save}>
-      <p>Saved rules are what the cache query uses. A missing optional value does not drop a person. People who fail a required field stay in the cache and are not eligible. Technology names are labels, not connections. This page does not start discovery.</p>
+      <p>Saved rules are what the cache query uses. A missing optional value does not drop a person. People who fail a required field stay in the cache and are not eligible. Technology names are labels, not connections. Saving this form does not start discovery and does not run a search in the browser.</p>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={Boolean(form.autonomous)}
+          onChange={(e) => setForm({ ...form, autonomous: e.target.checked })}
+        />
+        Search on its own every two hours. The target stays paused until you start it on Discovery engine. The worker process has to be deployed separately.
+      </label>
       <label>Target
         <select value={selectedId || ""} onChange={(e) => setSelectedId(Number(e.target.value))}>
           {targets.map((target) => (
@@ -1274,6 +1322,14 @@ function CacheHealth({ onError }) {
         <div className="metric"><span>Fresh fields</span><strong>{data.fresh_fields}</strong></div>
       </div>
       <p className="meta">Discovered today {data.people_today}. This week {data.people_week}. Ineligible evidence rows {data.ineligible_evidence}.</p>
+      <h3>Distribution</h3>
+      <div className="metric-row">
+        <div className="metric"><span>Active identities</span><strong>{data.distribution?.active_identities ?? 0}</strong></div>
+        <div className="metric"><span>Saturated</span><strong>{data.distribution?.saturated_identities ?? 0}</strong></div>
+        <div className="metric"><span>Replacements</span><strong>{data.distribution?.replacements ?? 0}</strong></div>
+        <div className="metric"><span>Customer limit</span><strong>{data.distribution?.max_customers ?? 3}</strong></div>
+      </div>
+      <p className="meta">{data.distribution?.detail}</p>
       <h3>Email status</h3>
       {!Object.keys(data.email_status || {}).length && <div className="empty">No cached people.</div>}
       <ul className="mini-list">

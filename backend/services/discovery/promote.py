@@ -111,6 +111,24 @@ def promote_qualified(db: Session, job: SearchJob) -> int:
         for candidate in batch:
             if candidate.identity_key in existing_keys:
                 continue
+            from backend.services.discovery_engine.distribution import canonical_key_for, customer_key_for, try_allocate
+
+            canonical = canonical_key_for(
+                profile_url=candidate.linkedin_url or "",
+                name=candidate.name or "",
+                domain="",
+            )
+            if canonical is not None:
+                decision = try_allocate(
+                    db,
+                    canonical_key=canonical,
+                    customer_key=customer_key_for(job),
+                    person_id=None,
+                    search_job_id=job.id,
+                    lead_record_id=None,
+                )
+                if decision == "saturated":
+                    continue
             existing_keys.add(candidate.identity_key)
             db.add(_lead_from_candidate(job, candidate))
         try:

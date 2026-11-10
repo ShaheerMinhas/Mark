@@ -50,6 +50,7 @@ class TargetIn(BaseModel):
     industries: list[str] = Field(default_factory=list)
     titles: list[str] = Field(default_factory=list)
     criteria: dict | None = None
+    autonomous: bool = False
 
 
 class SuppressionIn(BaseModel):
@@ -95,6 +96,9 @@ def _target_out(row: DiscoveryTarget) -> dict:
         "industries": row.industries or [],
         "titles": row.titles or [],
         "criteria": row.criteria or {},
+        "autonomous": bool(getattr(row, "autonomous", False)),
+        "rotation_cursor": int(getattr(row, "rotation_cursor", 0) or 0),
+        "last_query": row.last_query,
         "next_run_at": row.next_run_at,
     }
 
@@ -117,9 +121,10 @@ def create_target(
         name=body.name.strip(),
         priority=body.priority,
         scheduling_status="paused",
-        schedule_type=body.schedule_type,
+        schedule_type="interval" if body.autonomous else body.schedule_type,
         timezone=body.timezone,
-        interval_minutes=body.interval_minutes,
+        interval_minutes=120 if body.autonomous else body.interval_minutes,
+        autonomous=bool(body.autonomous),
         hour=body.hour,
         minute=body.minute,
         max_people_per_run=body.max_people_per_run,
@@ -182,9 +187,10 @@ def update_target(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     row.name = body.name.strip()
     row.priority = body.priority
-    row.schedule_type = body.schedule_type
+    row.autonomous = bool(body.autonomous)
+    row.schedule_type = "interval" if body.autonomous else body.schedule_type
+    row.interval_minutes = 120 if body.autonomous else body.interval_minutes
     row.timezone = body.timezone
-    row.interval_minutes = body.interval_minutes
     row.hour = body.hour
     row.minute = body.minute
     row.max_people_per_run = body.max_people_per_run
@@ -400,7 +406,7 @@ def _settings_out(row) -> dict:
         "max_runs_per_tick": row.max_runs_per_tick,
         "max_runs_per_hour": row.max_runs_per_hour,
         "max_runs_per_day": row.max_runs_per_day,
-        "detail": "Live public search stays off. Paid email runs only when that switch is on, the channel is not paused, and a reservation succeeds.",
+        "detail": "Scheduling is off until this switch is saved on. An autonomous target then uses only html.duckduckgo.com. Paid email runs only when that switch is on, the channel is not paused, and a reservation succeeds.",
     }
 
 

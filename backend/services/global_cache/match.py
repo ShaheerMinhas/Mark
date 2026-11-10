@@ -7,7 +7,9 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session, joinedload
 
-from backend.models import GlobalPerson, GlobalPersonTechnology
+from sqlalchemy import or_
+
+from backend.models import DistributionSlot, GlobalPerson, GlobalPersonTechnology, LeadAllocation
 from backend.services.global_cache.normalize import country_code, normalize_domain, normalize_technology
 
 
@@ -25,6 +27,8 @@ class CacheQuery:
     updated_after: datetime | None = None
     page: int = 1
     page_size: int = 25
+    customer_key: str | None = None
+    max_recipients: int | None = None
 
 
 def _filtered(db: Session, query: CacheQuery):
@@ -54,6 +58,16 @@ def _filtered(db: Session, query: CacheQuery):
             for extra in clauses[1:]:
                 cond = cond | extra
             q = q.filter(cond)
+    if query.customer_key and query.max_recipients:
+        mine = db.query(LeadAllocation.canonical_key).filter(LeadAllocation.customer_key == query.customer_key)
+        q = q.outerjoin(DistributionSlot, DistributionSlot.canonical_key == GlobalPerson.canonical_key)
+        q = q.filter(
+            or_(
+                DistributionSlot.recipient_count.is_(None),
+                DistributionSlot.recipient_count < int(query.max_recipients),
+                GlobalPerson.canonical_key.in_(mine),
+            )
+        )
     if query.technologies:
         q = q.filter(
             GlobalPerson.id.in_(
