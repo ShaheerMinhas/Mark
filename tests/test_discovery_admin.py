@@ -31,7 +31,13 @@ def _admin(client, db, email="operator@example.com"):
     db.commit()
     me = client.get("/api/auth/me", headers=headers).json()
     assert me["is_platform_admin"] is True
-    return headers, user
+    assert client.get("/api/platform/discovery/overview", headers=headers).status_code == 401
+    logged = client.post(
+        "/api/auth/admin/login",
+        json={"email": email, "password": "test-password-123"},
+    )
+    assert logged.status_code == 200, logged.text
+    return {"Authorization": f"Bearer {logged.json()['access_token']}"}, user
 
 
 def test_ordinary_users_cannot_read_the_operator_api(db):
@@ -39,9 +45,9 @@ def test_ordinary_users_cannot_read_the_operator_api(db):
         member, _user = _auth(client, "member-admin@example.com")
         owner, _owner = _auth(client, "owner-admin@example.com", organization=True)
         for headers in (member, owner):
-            assert client.get("/api/platform/discovery/overview", headers=headers).status_code == 403
-            assert client.get("/api/platform/discovery/people", headers=headers).status_code == 403
-            assert client.get("/api/platform/discovery/runs", headers=headers).status_code == 403
+            assert client.get("/api/platform/discovery/overview", headers=headers).status_code == 401
+            assert client.get("/api/platform/discovery/people", headers=headers).status_code == 401
+            assert client.get("/api/platform/discovery/runs", headers=headers).status_code == 401
 
 
 def test_overview_uses_real_rows_and_unknown_worker(db):

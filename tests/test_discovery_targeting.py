@@ -41,11 +41,13 @@ def _auth(client, email, *, organization=False):
 
 
 def _admin(client, db, email):
-    headers = _auth(client, email)
+    _auth(client, email)
     row = db.query(User).filter(User.email == email).one()
     row.is_platform_admin = True
     db.commit()
-    return headers
+    logged = client.post("/api/auth/admin/login", json={"email": email, "password": "test-password-123"})
+    assert logged.status_code == 200, logged.text
+    return {"Authorization": f"Bearer {logged.json()['access_token']}"}
 
 
 def _criteria(**overrides):
@@ -357,9 +359,9 @@ def test_invalid_schedule_bounds_and_contradictions_are_rejected(db):
         member = _auth(client, "bounds-member@example.com")
         owner = _auth(client, "bounds-owner@example.com", organization=True)
         for headers_denied in (member, owner):
-            assert client.get("/api/platform/discovery/targets", headers=headers_denied).status_code == 403
-            assert client.get("/api/platform/discovery/fields", headers=headers_denied).status_code == 403
-            assert client.post("/api/platform/discovery/catalogue", json={"kind": "technology", "name": "Redis"}, headers=headers_denied).status_code == 403
+            assert client.get("/api/platform/discovery/targets", headers=headers_denied).status_code == 401
+            assert client.get("/api/platform/discovery/fields", headers=headers_denied).status_code == 401
+            assert client.post("/api/platform/discovery/catalogue", json={"kind": "technology", "name": "Redis"}, headers=headers_denied).status_code == 401
         bad = [
             {"name": "Bad zone", "timezone": "Not/AZone", "criteria": {}},
             {"name": "Bad interval", "schedule_type": "interval", "interval_minutes": 5, "criteria": {}},

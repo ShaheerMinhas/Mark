@@ -9,7 +9,7 @@ import OrganizationView from "./components/OrganizationView.jsx";
 import PeopleView from "./components/PeopleView.jsx";
 import CrmView from "./components/CrmView.jsx";
 import PlatformView from "./components/PlatformView.jsx";
-import AdminConsole from "./components/AdminConsole.jsx";
+import AdminApp from "./components/AdminApp.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -25,6 +25,10 @@ export default function App() {
     }
     prevView.current = view;
   }, [view]);
+
+  if (window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/")) {
+    return <AdminApp />;
+  }
 
   if (loading) {
     return (
@@ -80,10 +84,6 @@ export default function App() {
       {view === "crm" && <CrmView />}
       {view === "org" && <OrganizationView />}
       {view === "platform" && <PlatformView />}
-      {view === "admin" && user.is_platform_admin && <AdminConsole />}
-      {view === "admin" && !user.is_platform_admin && (
-        <section className="view"><p className="error-msg">Platform admin required.</p></section>
-      )}
     </Layout>
   );
 }

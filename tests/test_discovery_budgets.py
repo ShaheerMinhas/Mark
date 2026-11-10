@@ -53,7 +53,9 @@ def _admin(client, db, email):
     row = db.query(User).filter(User.email == email).one()
     row.is_platform_admin = True
     db.commit()
-    return {"Authorization": f"Bearer {created.json()['access_token']}"}
+    logged = client.post("/api/auth/admin/login", json={"email": email, "password": "test-password-123"})
+    assert logged.status_code == 200, logged.text
+    return {"Authorization": f"Bearer {logged.json()['access_token']}"}
 
 
 def _auth(client, email, *, organization=False):
@@ -157,9 +159,9 @@ def test_zero_price_and_unknown_provider_are_rejected(db):
         member = _auth(client, "budget-member@example.com")
         owner = _auth(client, "budget-owner@example.com", organization=True)
         for denied in (member, owner):
-            assert client.get("/api/platform/discovery/providers", headers=denied).status_code == 403
-            assert client.get("/api/platform/discovery/usage", headers=denied).status_code == 403
-            assert client.get("/api/platform/discovery/cache-health", headers=denied).status_code == 403
+            assert client.get("/api/platform/discovery/providers", headers=denied).status_code == 401
+            assert client.get("/api/platform/discovery/usage", headers=denied).status_code == 401
+            assert client.get("/api/platform/discovery/cache-health", headers=denied).status_code == 401
         zero = client.put(
             "/api/platform/discovery/providers/hunter/price",
             json={"operation": "email_find", "currency": "USD", "max_cost_minor": 0},

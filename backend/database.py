@@ -55,7 +55,10 @@ def _column_ddl(ddl: str, bind=None) -> str:
 
 
 _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
-    "users": (("is_platform_admin", "BOOLEAN DEFAULT FALSE"),),
+    "users": (
+        ("is_platform_admin", "BOOLEAN DEFAULT FALSE"),
+        ("admin_token_version", "INTEGER DEFAULT 0"),
+    ),
     "discovery_settings": (
         ("max_runs_per_hour", "INTEGER DEFAULT 4"),
         ("max_runs_per_day", "INTEGER DEFAULT 24"),

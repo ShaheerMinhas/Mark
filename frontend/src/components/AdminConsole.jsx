@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, getToken } from "../api/client.js";
+import { adminApi, getAdminToken } from "../api/client.js";
 
 const SECTIONS = [
   { id: "overview", label: "Overview" },
@@ -75,7 +75,7 @@ function Overview({ onError }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api("/api/platform/discovery/overview")
+    adminApi("/api/platform/discovery/overview")
       .then((body) => { if (!cancelled) setData(body); })
       .catch((err) => { if (!cancelled) onError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -120,8 +120,8 @@ function Engine({ onError }) {
     setLoading(true);
     try {
       const [settingsBody, targetBody] = await Promise.all([
-        api("/api/platform/discovery/settings"),
-        api("/api/platform/discovery/targets"),
+        adminApi("/api/platform/discovery/settings"),
+        adminApi("/api/platform/discovery/targets"),
       ]);
       setSettings(settingsBody);
       setTargets(targetBody.items || []);
@@ -137,7 +137,7 @@ function Engine({ onError }) {
   async function saveLimits(event) {
     event.preventDefault();
     try {
-      setSettings(await api("/api/platform/discovery/settings", {
+      setSettings(await adminApi("/api/platform/discovery/settings", {
         method: "PATCH",
         body: {
           enabled: settings.enabled,
@@ -156,7 +156,7 @@ function Engine({ onError }) {
     event.preventDefault();
     if (!name.trim()) return;
     try {
-      await api("/api/platform/discovery/targets", {
+      await adminApi("/api/platform/discovery/targets", {
         method: "POST",
         body: { name: name.trim(), schedule_type: "daily", timezone: "UTC", countries: ["US"] },
       });
@@ -169,7 +169,7 @@ function Engine({ onError }) {
 
   async function act(id, action) {
     try {
-      await api(`/api/platform/discovery/targets/${id}/${action}`, { method: "POST" });
+      await adminApi(`/api/platform/discovery/targets/${id}/${action}`, { method: "POST" });
       load();
     } catch (err) {
       onError(err.message);
@@ -252,7 +252,7 @@ function Leads({ onError }) {
     try {
       const params = new URLSearchParams({ page: String(page), page_size: "25", sort: "name" });
       if (q.trim()) params.set("q", q.trim());
-      setData(await api(`/api/platform/discovery/people?${params}`));
+      setData(await adminApi(`/api/platform/discovery/people?${params}`));
     } catch (err) {
       onError(err.message);
     } finally {
@@ -264,7 +264,7 @@ function Leads({ onError }) {
 
   async function open(id) {
     try {
-      setDetail(await api(`/api/platform/discovery/people/${id}`));
+      setDetail(await adminApi(`/api/platform/discovery/people/${id}`));
     } catch (err) {
       onError(err.message);
     }
@@ -272,7 +272,7 @@ function Leads({ onError }) {
 
   async function archive(id) {
     try {
-      await api(`/api/platform/discovery/people/${id}/archive`, { method: "POST" });
+      await adminApi(`/api/platform/discovery/people/${id}/archive`, { method: "POST" });
       setDetail(null);
       load();
     } catch (err) {
@@ -286,7 +286,7 @@ function Leads({ onError }) {
         <div className="people-toolbar">
           <input value={q} placeholder="Name, company, or email" aria-label="Filter cached leads" onChange={(e) => { setPage(1); setQ(e.target.value); }} />
           <button type="button" className="ghost" onClick={async () => {
-            const token = getToken();
+            const token = getAdminToken();
             const response = await fetch("/api/platform/discovery/people/export", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
             if (!response.ok) { onError("Export failed"); return; }
             const blob = await response.blob();
@@ -352,7 +352,7 @@ function Companies({ onError }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    api("/api/platform/discovery/companies?page=1&page_size=25")
+    adminApi("/api/platform/discovery/companies?page=1&page_size=25")
       .then(setData)
       .catch((err) => onError(err.message))
       .finally(() => setLoading(false));
@@ -386,7 +386,7 @@ function Jobs({ onError }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await api("/api/platform/discovery/runs?page=1&page_size=25&sort=newest"));
+      setData(await adminApi("/api/platform/discovery/runs?page=1&page_size=25&sort=newest"));
     } catch (err) {
       onError(err.message);
     } finally {
@@ -397,7 +397,7 @@ function Jobs({ onError }) {
 
   async function open(id) {
     try {
-      setDetail(await api(`/api/platform/discovery/runs/${id}`));
+      setDetail(await adminApi(`/api/platform/discovery/runs/${id}`));
     } catch (err) {
       onError(err.message);
     }
@@ -405,7 +405,7 @@ function Jobs({ onError }) {
 
   async function cancel(id) {
     try {
-      await api(`/api/platform/discovery/runs/${id}/cancel`, { method: "POST" });
+      await adminApi(`/api/platform/discovery/runs/${id}/cancel`, { method: "POST" });
       load();
       open(id);
     } catch (err) {
@@ -529,8 +529,8 @@ function Targeting({ onError }) {
     setLoading(true);
     try {
       const [targetBody, catalogueBody] = await Promise.all([
-        api("/api/platform/discovery/targets"),
-        api("/api/platform/discovery/catalogue"),
+        adminApi("/api/platform/discovery/targets"),
+        adminApi("/api/platform/discovery/catalogue"),
       ]);
       const items = targetBody.items || [];
       setTargets(items);
@@ -600,7 +600,7 @@ function Targeting({ onError }) {
       },
     };
     try {
-      const saved = await api(`/api/platform/discovery/targets/${selectedId}`, {
+      const saved = await adminApi(`/api/platform/discovery/targets/${selectedId}`, {
         method: "PATCH",
         body: {
           name: form.name.trim(),
@@ -628,7 +628,7 @@ function Targeting({ onError }) {
   async function runPreview() {
     if (!selectedId) return;
     try {
-      setPreview(await api(`/api/platform/discovery/targets/${selectedId}/preview`, { method: "POST" }));
+      setPreview(await adminApi(`/api/platform/discovery/targets/${selectedId}/preview`, { method: "POST" }));
     } catch (err) {
       onError(err.message);
     }
@@ -637,12 +637,12 @@ function Targeting({ onError }) {
   async function addCategory() {
     if (!categoryName.trim()) return;
     try {
-      await api("/api/platform/discovery/catalogue", {
+      await adminApi("/api/platform/discovery/catalogue", {
         method: "POST",
         body: { kind: categoryKind, name: categoryName.trim() },
       });
       setCategoryName("");
-      const catalogueBody = await api("/api/platform/discovery/catalogue");
+      const catalogueBody = await adminApi("/api/platform/discovery/catalogue");
       setCatalogue(catalogueBody.items || []);
     } catch (err) {
       onError(err.message);
@@ -896,7 +896,7 @@ function FieldPriorities({ onError }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const body = await api("/api/platform/discovery/fields");
+      const body = await adminApi("/api/platform/discovery/fields");
       setItems(body.items || []);
       setDetail(body.detail || "");
     } catch (err) {
@@ -915,7 +915,7 @@ function FieldPriorities({ onError }) {
   async function save(item) {
     setNotice("");
     try {
-      await api(`/api/platform/discovery/fields/${item.field_name}`, {
+      await adminApi(`/api/platform/discovery/fields/${item.field_name}`, {
         method: "PATCH",
         body: {
           collection_enabled: item.collection_enabled,
@@ -1023,9 +1023,9 @@ function Providers({ onError }) {
     setLoading(true);
     try {
       const [settingsBody, providerBody, budgetBody] = await Promise.all([
-        api("/api/platform/discovery/spend-settings"),
-        api("/api/platform/discovery/providers"),
-        api("/api/platform/discovery/budgets"),
+        adminApi("/api/platform/discovery/spend-settings"),
+        adminApi("/api/platform/discovery/providers"),
+        adminApi("/api/platform/discovery/budgets"),
       ]);
       setSettings(settingsBody);
       setItems(providerBody.items || []);
@@ -1047,7 +1047,7 @@ function Providers({ onError }) {
     event.preventDefault();
     setNotice("");
     try {
-      setSettings(await api("/api/platform/discovery/spend-settings", { method: "PATCH", body: settings }));
+      setSettings(await adminApi("/api/platform/discovery/spend-settings", { method: "PATCH", body: settings }));
       setNotice("Switches saved. Live search stays off.");
     } catch (err) {
       onError(err.message);
@@ -1057,19 +1057,19 @@ function Providers({ onError }) {
   async function saveProvider(item) {
     setNotice("");
     try {
-      await api(`/api/platform/discovery/providers/${item.name}`, {
+      await adminApi(`/api/platform/discovery/providers/${item.name}`, {
         method: "PATCH",
         body: { enabled: item.enabled, priority: Number(item.priority), rate_per_hour: Number(item.rate_per_hour) },
       });
       const price = item.draft_price === "" || item.draft_price === undefined ? null : Number(item.draft_price);
       if (price !== null) {
-        await api(`/api/platform/discovery/providers/${item.name}/price`, {
+        await adminApi(`/api/platform/discovery/providers/${item.name}/price`, {
           method: "PUT",
           body: { operation: "email_find", currency: "USD", max_cost_minor: price },
         });
       }
       if (secret.trim() && secret.startsWith(`${item.name}:`)) {
-        await api(`/api/platform/discovery/providers/${item.name}/credential`, {
+        await adminApi(`/api/platform/discovery/providers/${item.name}/credential`, {
           method: "PUT",
           body: { api_key: secret.slice(item.name.length + 1) },
         });
@@ -1086,7 +1086,7 @@ function Providers({ onError }) {
     event.preventDefault();
     setNotice("");
     try {
-      await api("/api/platform/discovery/budgets", {
+      await adminApi("/api/platform/discovery/budgets", {
         method: "PUT",
         body: {
           scope: budget.scope,
@@ -1217,7 +1217,7 @@ function Usage({ onError }) {
 
   useEffect(() => {
     let cancelled = false;
-    api("/api/platform/discovery/usage")
+    adminApi("/api/platform/discovery/usage")
       .then((body) => { if (!cancelled) setData(body); })
       .catch((err) => { if (!cancelled) onError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -1255,7 +1255,7 @@ function CacheHealth({ onError }) {
 
   useEffect(() => {
     let cancelled = false;
-    api("/api/platform/discovery/cache-health")
+    adminApi("/api/platform/discovery/cache-health")
       .then((body) => { if (!cancelled) setData(body); })
       .catch((err) => { if (!cancelled) onError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });

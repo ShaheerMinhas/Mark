@@ -257,18 +257,24 @@ def test_customers_cannot_read_operator_cost_or_another_workspace(db):
         search_id = created.json()["search"]["id"]
         assert client.get(f"/api/searches/{search_id}", headers=other).status_code == 404
         for headers in (member, owner):
-            assert client.get("/api/platform/discovery/usage", headers=headers).status_code == 403
-            assert client.get("/api/platform/discovery/providers", headers=headers).status_code == 403
-            assert client.get("/api/platform/discovery/people/export", headers=headers).status_code == 403
+            assert client.get("/api/platform/discovery/usage", headers=headers).status_code == 401
+            assert client.get("/api/platform/discovery/providers", headers=headers).status_code == 401
+            assert client.get("/api/platform/discovery/people/export", headers=headers).status_code == 401
         cache = client.get("/api/cache/people", headers=member)
         assert cache.status_code == 200
         assert "platform-secret-value" not in cache.text
         assert "max_cost_minor" not in cache.text
-        assert client.get("/api/platform/discovery/people?page_size=1000", headers=member).status_code == 403
+        assert client.get("/api/platform/discovery/people?page_size=1000", headers=member).status_code == 401
         admin = db.query(User).filter(User.email == "phase6-member@example.com").one()
         admin.is_platform_admin = True
         db.commit()
-        too_big = client.get("/api/platform/discovery/people?page_size=1000", headers=member)
+        logged = client.post(
+            "/api/auth/admin/login",
+            json={"email": "phase6-member@example.com", "password": "test-password-123"},
+        )
+        assert logged.status_code == 200, logged.text
+        admin_headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+        too_big = client.get("/api/platform/discovery/people?page_size=1000", headers=admin_headers)
         assert too_big.status_code == 422
         health = client.get("/api/health")
         assert health.status_code == 200

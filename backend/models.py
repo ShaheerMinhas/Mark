@@ -145,6 +145,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     #: Platform operator. Never granted by registration or by owning a workspace.
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    admin_token_version: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     memberships: Mapped[list[OrganizationMember]] = relationship(back_populates="user")

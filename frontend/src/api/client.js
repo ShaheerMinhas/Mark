@@ -1,10 +1,27 @@
 const TOKEN_KEY = "mark_token";
 const USER_KEY = "mark_user";
+const ADMIN_TOKEN_KEY = "mark_admin_token";
+const ADMIN_USER_KEY = "mark_admin_user";
 const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 export const AUTH_EXPIRED_EVENT = "mark:auth-expired";
+export const ADMIN_AUTH_EXPIRED_EVENT = "mark:admin-auth-expired";
 
 export function getToken() {
-  const raw = localStorage.getItem(TOKEN_KEY);
+  return readStoredToken(TOKEN_KEY);
+}
+
+export function setToken(token) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+function readStoredToken(key) {
+  const raw = localStorage.getItem(key);
   if (!raw) return null;
   let token = raw.trim();
   if (
@@ -23,14 +40,18 @@ export function getToken() {
   return token || null;
 }
 
-export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+export function getAdminToken() {
+  return readStoredToken(ADMIN_TOKEN_KEY);
 }
 
-export function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+export function setAdminToken(token) {
+  if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  else localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+export function clearAdminSession() {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(ADMIN_USER_KEY);
 }
 
 function apiUrl(path) {
@@ -53,8 +74,8 @@ function errorMessage(data, status) {
 
 function isAuthFailure(status, message, path) {
   if (status !== 401) return false;
-  if (String(path).includes("/api/auth/login")) return false;
-  return /invalid token|not authenticated|user not found|session expired/i.test(message);
+  if (String(path).includes("/api/auth/login") || String(path).includes("/api/auth/admin/login")) return false;
+  return /invalid token|not authenticated|user not found|session expired|session required/i.test(message);
 }
 
 function expireSession() {
@@ -62,9 +83,8 @@ function expireSession() {
   window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
 
-export async function api(path, opts = {}) {
+async function request(path, opts, token, onUnauthorized) {
   const headers = { ...(opts.headers || {}) };
-  const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let body = opts.body;
@@ -80,13 +100,24 @@ export async function api(path, opts = {}) {
   if (!res.ok) {
     const msg = errorMessage(data, res.status);
     if (isAuthFailure(res.status, msg, path)) {
-      expireSession();
+      onUnauthorized();
       throw new Error("Your session expired. Please sign in again.");
     }
     throw new Error(msg);
   }
 
   return data;
+}
+
+export async function api(path, opts = {}) {
+  return request(path, opts, getToken(), expireSession);
+}
+
+export async function adminApi(path, opts = {}) {
+  return request(path, opts, getAdminToken(), () => {
+    clearAdminSession();
+    window.dispatchEvent(new Event(ADMIN_AUTH_EXPIRED_EVENT));
+  });
 }
 
 export async function downloadExport(searchId, format) {

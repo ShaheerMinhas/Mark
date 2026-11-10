@@ -197,7 +197,10 @@ Platform operators are not created by signing up, and owning a workspace does no
 
 ```bash
 python -m backend.platform_admin grant operator@example.com
+python -m backend.platform_admin revoke operator@example.com
 ```
+
+The person must already have an account. Neither command sets a password, prints a password, or creates the first user as an operator. Operator sign-in is `https://your-host/admin`, separate from the customer sign-in. A customer session does not open the operator console, including when the same person is an operator. Revoke removes the role and invalidates operator tokens. Customer sessions are unchanged. There is no public registration on `/admin`.
 
 ## Architecture
 

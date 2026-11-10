@@ -17,9 +17,7 @@ const NAV = [
 
 export default function Layout({ view, setView, children }) {
   const { user, logout } = useAuth();
-  const nav = user?.is_platform_admin
-    ? [...NAV, { group: "Operator", items: [{ id: "admin", label: "Admin" }] }]
-    : NAV;
+  const nav = NAV;
 
   return (
     <div className={`app-shell screen${view === "search" ? " screen--search" : ""}`}>

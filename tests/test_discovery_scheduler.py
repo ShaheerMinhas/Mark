@@ -315,16 +315,22 @@ def test_customers_and_workspace_owners_cannot_configure_discovery(client, db):
     headers = _auth(client, "member@example.com")
     owner = _auth(client, "workspace-owner@example.com", organization=True)
     payload = {"name": "Secret crawl", "schedule_type": "daily", "timezone": "UTC"}
-    assert client.post("/api/platform/discovery/targets", json=payload, headers=headers).status_code == 403
-    assert client.post("/api/platform/discovery/targets", json=payload, headers=owner).status_code == 403
+    assert client.post("/api/platform/discovery/targets", json=payload, headers=headers).status_code == 401
+    assert client.post("/api/platform/discovery/targets", json=payload, headers=owner).status_code == 401
     user = db.query(User).filter(User.email == "workspace-owner@example.com").one()
     assert user.is_platform_admin is False
     user.is_platform_admin = True
     db.commit()
-    created = client.post("/api/platform/discovery/targets", json=payload, headers=owner)
+    logged = client.post(
+        "/api/auth/admin/login",
+        json={"email": "workspace-owner@example.com", "password": "test-password-123"},
+    )
+    assert logged.status_code == 200, logged.text
+    admin_headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+    created = client.post("/api/platform/discovery/targets", json=payload, headers=admin_headers)
     assert created.status_code == 200, created.text
     assert created.json()["scheduling_status"] == "paused"
-    settings = client.get("/api/platform/discovery/settings", headers=owner).json()
+    settings = client.get("/api/platform/discovery/settings", headers=admin_headers).json()
     assert settings["enabled"] is False
     assert settings["paid_providers_enabled"] is False
 
