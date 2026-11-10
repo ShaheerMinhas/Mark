@@ -583,6 +583,42 @@ def archive_cached_company(company_id: int, admin: User = Depends(require_platfo
     return _company_dict(row)
 
 
+class SourceIn(BaseModel):
+    enabled: bool | None = None
+    priority: int | None = None
+    max_requests_per_run: int | None = None
+    monthly_call_limit: int | None = None
+    approved_hosts: list[str] | None = None
+    sec_contact_email: str | None = None
+    api_key: str | None = None
+    reset_calls: bool = False
+
+
+@router.get("/sources")
+def get_sources(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    from backend.services.discovery_engine.sources import source_report
+
+    return {"items": source_report(db)}
+
+
+@router.patch("/sources/{name}")
+def patch_source(
+    name: str,
+    body: SourceIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    from backend.services.discovery_engine.sources import source_report, update_source
+
+    try:
+        update_source(db, name, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"items": source_report(db)}
+
+
 @router.get("/settings")
 def get_settings(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
     del admin

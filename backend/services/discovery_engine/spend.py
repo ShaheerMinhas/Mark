@@ -563,4 +563,18 @@ def cache_health(db: Session, *, now: datetime | None = None) -> dict:
             "An inferred address is not verified. Cost is on the usage report."
         ),
         "distribution": distribution_summary(db),
+        "robots_skipped_pages": _robots_skipped(db),
+        "sources": _source_yield(db),
     }
+
+
+def _robots_skipped(db: Session) -> int:
+    from backend.services.EmailModule.robots import robots_skipped_count
+
+    return robots_skipped_count(db)
+
+
+def _source_yield(db: Session) -> list[dict]:
+    from backend.services.discovery_engine.sources import source_report
+
+    return source_report(db)

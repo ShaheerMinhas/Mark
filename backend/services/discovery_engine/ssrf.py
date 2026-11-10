@@ -80,7 +80,15 @@ def default_resolver(hostname: str) -> list[str]:
     return found
 
 
-def pinned_opener(url: str, addresses: list[str], timeout: float, max_bytes: int):
+def pinned_opener(
+    url: str,
+    addresses: list[str],
+    timeout: float,
+    max_bytes: int,
+    *,
+    user_agent: str = "MarkBot/1.0",
+    extra_headers: dict[str, str] | None = None,
+):
     """Connect to a checked address. The Host header and TLS name stay the original host.
 
     Redirects are not followed here. ``safe_fetch`` checks the next URL itself.
@@ -97,14 +105,19 @@ def pinned_opener(url: str, addresses: list[str], timeout: float, max_bytes: int
         path = parsed.path or "/"
         if parsed.query:
             path = f"{path}?{parsed.query}"
-        payload = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}\r\n"
-            "User-Agent: MarkBot/1.0\r\n"
-            "Accept: text/html\r\n"
-            "Connection: close\r\n\r\n"
-        )
-        sock.sendall(payload.encode("ascii"))
+        header_lines = [
+            f"GET {path} HTTP/1.1",
+            f"Host: {host}",
+            f"User-Agent: {user_agent}",
+            "Accept: text/html,application/json",
+            "Connection: close",
+        ]
+        for key, value in (extra_headers or {}).items():
+            if key.lower() in {"host", "connection"}:
+                continue
+            header_lines.append(f"{key}: {value}")
+        payload = "\r\n".join(header_lines) + "\r\n\r\n"
+        sock.sendall(payload.encode("ascii", errors="strict"))
         data = b""
         while len(data) <= max_bytes + 65536:
             chunk = sock.recv(8192)
@@ -120,12 +133,17 @@ def pinned_opener(url: str, addresses: list[str], timeout: float, max_bytes: int
     except (IndexError, ValueError) as exc:
         raise SsrfError("response status was not readable") from exc
     location = None
+    headers: dict[str, str] = {}
     for line in lines[1:]:
-        if line.lower().startswith("location:"):
-            location = line.split(":", 1)[1].strip()
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        headers[key.strip().lower()] = value.strip()
+        if key.lower() == "location":
+            location = value.strip()
     if len(body) > max_bytes:
         body = body[:max_bytes]
-    return status, location, body
+    return status, location, body, headers
 
 
 def safe_fetch(
@@ -155,7 +173,8 @@ def safe_fetch(
             raise SsrfError("name did not resolve") from exc
         if not addresses or any(not _address_is_public(item) for item in addresses):
             raise SsrfError("resolved address is not public")
-        status, location, body = opener(current, addresses, timeout, max_bytes)
+        result = opener(current, addresses, timeout, max_bytes)
+        status, location, body = result[0], result[1], result[2]
         if status in {301, 302, 303, 307, 308} and location:
             current = urljoin(current, location)
             continue

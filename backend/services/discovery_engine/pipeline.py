@@ -100,8 +100,19 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
         discover_status = "skipped"
     else:
         from backend.services.discovery_engine.ingest import collect_public_hits, ingest_hits
+        from backend.services.discovery_engine.sources import collect_extra_sources, linkedin_enabled
 
-        hits, discover_detail = collect_public_hits(target)
+        hits = []
+        notes = []
+        if linkedin_enabled(db):
+            hits, discover_detail = collect_public_hits(target)
+            notes.append(discover_detail)
+        else:
+            notes.append("LinkedIn search is disabled. No LinkedIn request was sent.")
+        extra_hits, extra_note = collect_extra_sources(db, target)
+        hits.extend(extra_hits)
+        notes.append(extra_note)
+        discover_detail = " ".join(note for note in notes if note)
         if hits:
             from backend.services.discovery_engine.contacts import queue_contact_jobs
 
@@ -111,7 +122,7 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
             discover_detail = (
                 f"Ingested {stats['ingested']} public people. "
                 f"{stats['duplicates']} were already cached. {stats['suppressed']} were suppressed. "
-                f"Queued {queued} contact enrichment jobs. Company research was not called."
+                f"Queued {queued} contact enrichment jobs. {extra_note} Company research was not called."
             )
         else:
             discover_status = "blocked"

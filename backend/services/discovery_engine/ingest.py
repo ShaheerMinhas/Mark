@@ -35,10 +35,13 @@ def ingest_hits(db, hits: list[dict]) -> dict:
             profile_url=hit.get("profile_url"),
             email=hit.get("email"),
             email_status=hit.get("email_status"),
+            email_confidence=hit.get("email_confidence"),
             phone=hit.get("phone") if hit.get("phone_evidenced") else None,
             phone_evidenced=bool(hit.get("phone_evidenced")),
             share_scope="public",
             source_url=public_http_url(hit.get("source_url")),
+            provider=hit.get("provider"),
+            provider_record_id=hit.get("provider_record_id"),
         )
         try:
             count_before = db.query(GlobalPerson.id).count()

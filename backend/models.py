@@ -806,6 +806,7 @@ class GlobalEvidence(Base):
     __tablename__ = "global_evidence"
     __table_args__ = (
         Index("ix_global_evidence_subject", "subject_type", "subject_id"),
+        Index("ix_global_evidence_provider", "provider"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1133,6 +1134,30 @@ class ContactEnrichmentJob(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class FetchStat(Base):
+    """Running counts for outbound fetch decisions. robots_disallow is the robots skip total."""
+
+    __tablename__ = "fetch_stats"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DiscoverySource(Base):
+    """One discovery pathway. New sources stay off until an operator enables them."""
+
+    __tablename__ = "discovery_sources"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    max_requests_per_run: Mapped[int] = mapped_column(Integer, default=5)
+    monthly_call_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    calls_used: Mapped[int] = mapped_column(Integer, default=0)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class WorkerHeartbeat(Base):

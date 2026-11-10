@@ -2,19 +2,13 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import urljoin, urlparse
-
-import httpx
+from urllib.parse import urljoin
 
 from backend.services.EmailModule.domain import host_from_url
 from backend.services.EmailModule.extract import email_fits_person, extract_emails
 from backend.services.EmailModule.types import EmailHit
 from backend.services.ddg import ddg_text
 
-_HEADERS = {
-    "User-Agent": "MarkEmailModule/1.0 (public contact lookup)",
-    "Accept": "text/html,application/xhtml+xml,text/plain",
-}
 _MAILTO_RE = re.compile(r"mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})", re.I)
 _MAX_PAGE_BYTES = 250_000
 
@@ -40,20 +34,10 @@ def _search_queries(name: str, company: str, domain: str) -> list[str]:
 
 
 def _fetch_text(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        return ""
-    try:
-        with httpx.Client(follow_redirects=True, timeout=8.0, headers=_HEADERS) as client:
-            resp = client.get(url)
-        if resp.status_code >= 400:
-            return ""
-        content_type = (resp.headers.get("content-type") or "").lower()
-        if "html" not in content_type and "text" not in content_type and "json" not in content_type:
-            return ""
-        return resp.text[:_MAX_PAGE_BYTES]
-    except Exception:
-        return ""
+    """Open one public page through the pinned fetch after robots.txt allows it."""
+    from backend.services.EmailModule.robots import fetch_public_page
+
+    return fetch_public_page(url)[:_MAX_PAGE_BYTES]
 
 
 def _hits_from_text(text: str, *, name: str, source: str, evidence: str, domain: str = "") -> list[EmailHit]:

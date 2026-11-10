@@ -4,6 +4,7 @@ import { adminApi, getAdminToken } from "../api/client.js";
 const SECTIONS = [
   { id: "overview", label: "Overview" },
   { id: "engine", label: "Discovery engine" },
+  { id: "sources", label: "Sources" },
   { id: "targeting", label: "Targeting" },
   { id: "fields", label: "Field priorities" },
   { id: "providers", label: "Providers" },
@@ -56,6 +57,7 @@ export default function AdminConsole() {
       {error && <p className="error-msg">{error}</p>}
       {section === "overview" && <Overview onError={setError} />}
       {section === "engine" && <Engine onError={setError} />}
+      {section === "sources" && <Sources onError={setError} />}
       {section === "targeting" && <Targeting onError={setError} />}
       {section === "fields" && <FieldPriorities onError={setError} />}
       {section === "providers" && <Providers onError={setError} />}
@@ -1277,6 +1279,95 @@ function Providers({ onError }) {
   );
 }
 
+function Sources({ onError }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const body = await adminApi("/api/platform/discovery/sources");
+      setItems(body.items || []);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save(source, event) {
+    event.preventDefault();
+    setNotice("");
+    const body = {
+      enabled: Boolean(source.enabled),
+      priority: Number(source.priority),
+      max_requests_per_run: Number(source.max_requests_per_run),
+    };
+    if (source.name === "google_places") body.monthly_call_limit = Number(source.monthly_call_limit || 0);
+    if (source.name === "directories") body.approved_hosts = String(source.hostsText || "").split(",").map((item) => item.trim()).filter(Boolean);
+    if (source.name === "sec_edgar") body.sec_contact_email = source.sec_contact_email || "";
+    if (source.api_key) body.api_key = source.api_key;
+    try {
+      const saved = await adminApi(`/api/platform/discovery/sources/${source.name}`, { method: "PATCH", body });
+      setItems(saved.items || []);
+      setNotice("Saved. A new source stays idle until it is enabled and the worker is running.");
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  if (loading) return <div className="empty">Loading sources…</div>;
+  return (
+    <div className="panel admin-note">
+      <p>LinkedIn public search is the first source. It does not log in and it does not open profile pages. Every other source is off until you enable it. HTML pages use the pinned fetch and robots.txt. Official APIs stay closed until their key or contact address is saved. No source invents an email.</p>
+      {items.map((source) => (
+        <form key={source.name} className="people-toolbar" onSubmit={(event) => save(source, event)}>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={Boolean(source.enabled)}
+              onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, enabled: event.target.checked } : item))}
+            />
+            {source.label}
+          </label>
+          <label>Priority
+            <input type="number" min="1" value={source.priority} onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, priority: event.target.value } : item))} />
+          </label>
+          <label>Requests per run
+            <input type="number" min="1" max="20" value={source.max_requests_per_run} onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, max_requests_per_run: event.target.value } : item))} />
+          </label>
+          {source.name === "google_places" && (
+            <label>Monthly call cap
+              <input type="number" min="0" value={source.monthly_call_limit || 0} onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, monthly_call_limit: event.target.value } : item))} />
+            </label>
+          )}
+          {(source.name === "github" || source.name === "companies_house" || source.name === "google_places") && (
+            <label>{source.credential_configured ? "Replace key" : "API key"}
+              <input type="password" autoComplete="off" value={source.api_key || ""} onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, api_key: event.target.value } : item))} />
+            </label>
+          )}
+          {source.name === "sec_edgar" && (
+            <label>SEC contact email
+              <input value={source.sec_contact_email || ""} onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, sec_contact_email: event.target.value } : item))} />
+            </label>
+          )}
+          {source.name === "directories" && (
+            <label>Approved hosts
+              <input value={source.hostsText ?? (source.approved_hosts || []).join(", ")} onChange={(event) => setItems((current) => current.map((item) => item.name === source.name ? { ...item, hostsText: event.target.value } : item))} />
+            </label>
+          )}
+          <span className="meta">{source.people} people · {source.with_email} email · {source.with_phone} phone</span>
+          <button type="submit" className="ghost">Save {source.label}</button>
+        </form>
+      ))}
+      {notice && <p className="meta">{notice}</p>}
+    </div>
+  );
+}
+
 function Usage({ onError }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1341,8 +1432,15 @@ function CacheHealth({ onError }) {
         <div className="metric"><span>With email</span><strong>{data.with_email ?? 0}</strong></div>
         <div className="metric"><span>With phone</span><strong>{data.with_phone ?? 0}</strong></div>
         <div className="metric"><span>Name only</span><strong>{data.name_only ?? 0}</strong></div>
+        <div className="metric"><span>Robots skipped</span><strong>{data.robots_skipped_pages ?? 0}</strong></div>
       </div>
-      <p className="meta">Discovered today {data.people_today}. This week {data.people_week}. Ineligible evidence rows {data.ineligible_evidence}.</p>
+      <p className="meta">Discovered today {data.people_today}. This week {data.people_week}. Ineligible evidence rows {data.ineligible_evidence}. Robots skipped counts pages the email and phone fetchers did not open because robots.txt disallowed them.</p>
+      <h3>Source yield</h3>
+      <ul className="mini-list">
+        {(data.sources || []).map((source) => (
+          <li key={source.name}>{source.label}: {source.people} people, {source.with_email} with email, {source.with_phone} with phone. {source.enabled ? "On" : "Off"}.</li>
+        ))}
+      </ul>
       <h3>Distribution</h3>
       <div className="metric-row">
         <div className="metric"><span>Active identities</span><strong>{data.distribution?.active_identities ?? 0}</strong></div>
