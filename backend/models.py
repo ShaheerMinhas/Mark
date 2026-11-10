@@ -485,6 +485,8 @@ class ProviderUsage(Base):
     operation: Mapped[str] = mapped_column(String(32))
     success: Mapped[bool] = mapped_column(Boolean, default=False)
     credits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    reservation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lead_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     search_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -851,6 +853,9 @@ class DiscoverySettings(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     live_public_search_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     paid_providers_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    pause_enrichment: Mapped[bool] = mapped_column(Boolean, default=True)
+    pause_email: Mapped[bool] = mapped_column(Boolean, default=True)
+    pause_verify: Mapped[bool] = mapped_column(Boolean, default=True)
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     max_runs_per_tick: Mapped[int] = mapped_column(Integer, default=5)
     max_runs_per_hour: Mapped[int] = mapped_column(Integer, default=4)
@@ -950,6 +955,117 @@ class DiscoveryFieldRule(Base):
     refresh_hours: Mapped[int] = mapped_column(Integer, default=168)
     enrichment_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     verification_required: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DiscoveryProvider(Base):
+    """A global-cache adapter. Disabled until an operator turns it on. Customer keys are not stored here."""
+
+    __tablename__ = "discovery_providers"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    rate_per_hour: Mapped[int] = mapped_column(Integer, default=0)
+    supports_email_find: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_email_verify: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_company: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryProviderSecret(Base):
+    """Platform credential for global jobs. The API never returns this value."""
+
+    __tablename__ = "discovery_provider_secrets"
+
+    provider_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryProviderPrice(Base):
+    """Operator-approved maximum cost of one call, in integer minor units. Zero is not a price."""
+
+    __tablename__ = "discovery_provider_prices"
+    __table_args__ = (Index("uq_discovery_provider_price", "provider_name", "operation", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider_name: Mapped[str] = mapped_column(String(64), index=True)
+    operation: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(3))
+    max_cost_minor: Mapped[int] = mapped_column(Integer)
+    unit: Mapped[str] = mapped_column(String(16), default="call")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryBudget(Base):
+    """Hard spending cap. Amounts are integers. There is no implied free tier."""
+
+    __tablename__ = "discovery_budgets"
+    __table_args__ = (
+        Index("uq_discovery_budget", "scope", "provider_name", "period", "currency", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scope: Mapped[str] = mapped_column(String(16))
+    provider_name: Mapped[str] = mapped_column(String(64), default="")
+    period: Mapped[str] = mapped_column(String(16))
+    currency: Mapped[str] = mapped_column(String(3))
+    limit_minor: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DiscoveryBudgetPeriod(Base):
+    """Reserved, settled, and unknown holds for one budget window."""
+
+    __tablename__ = "discovery_budget_periods"
+    __table_args__ = (Index("uq_discovery_budget_period", "budget_id", "period_start", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    budget_id: Mapped[int] = mapped_column(ForeignKey("discovery_budgets.id"), index=True)
+    period_start: Mapped[str] = mapped_column(String(10))
+    reserved_minor: Mapped[int] = mapped_column(Integer, default=0)
+    settled_minor: Mapped[int] = mapped_column(Integer, default=0)
+    unknown_minor: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DiscoveryReservation(Base):
+    """One reserved maximum. Retries use a new key. Reconciliation is idempotent."""
+
+    __tablename__ = "discovery_reservations"
+    __table_args__ = (Index("ix_discovery_reservation_provider", "provider_name", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(255), unique=True)
+    provider_name: Mapped[str] = mapped_column(String(64))
+    operation: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(3))
+    amount_minor: Mapped[int] = mapped_column(Integer)
+    actual_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="reserved")
+    period_ids: Mapped[list] = mapped_column(JSON, default=list)
+    run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    person_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GlobalFieldFreshness(Base):
+    """When a shared field was observed, enriched, or verified, and when it is due again."""
+
+    __tablename__ = "global_field_freshness"
+    __table_args__ = (Index("uq_global_field_freshness", "person_id", "field_name", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("global_people.id"), index=True)
+    field_name: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class SchedulerLock(Base):

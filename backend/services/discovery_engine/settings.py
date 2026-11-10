@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import DiscoverySettings
 
-# Phase 2 has no budget ledger. This stays false even if a row is edited.
+# Live public search stays off. Paid calls are a settings switch and default off.
 LIVE_PUBLIC_SEARCH_ENABLED = False
 PAID_PROVIDERS_ENABLED = False
 
@@ -21,6 +21,9 @@ def ensure_settings(db: Session) -> DiscoverySettings:
             enabled=False,
             live_public_search_enabled=False,
             paid_providers_enabled=False,
+            pause_enrichment=True,
+            pause_email=True,
+            pause_verify=True,
             max_concurrency=1,
             max_runs_per_tick=5,
             updated_at=datetime.utcnow(),
@@ -28,7 +31,12 @@ def ensure_settings(db: Session) -> DiscoverySettings:
         db.add(row)
         db.flush()
     row.live_public_search_enabled = False
-    row.paid_providers_enabled = False
+    if row.pause_enrichment is None:
+        row.pause_enrichment = True
+    if row.pause_email is None:
+        row.pause_email = True
+    if row.pause_verify is None:
+        row.pause_verify = True
     if not row.max_runs_per_hour:
         row.max_runs_per_hour = 4
     if not row.max_runs_per_day:
@@ -52,7 +60,6 @@ def update_limits(db: Session, *, enabled: bool, max_concurrency: int, max_runs_
     row.max_runs_per_hour = max_runs_per_hour
     row.max_runs_per_day = max_runs_per_day
     row.live_public_search_enabled = False
-    row.paid_providers_enabled = False
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)

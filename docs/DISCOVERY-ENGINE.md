@@ -1,6 +1,6 @@
 # Discovery engine
 
-This document is the audit, the target design, and the acceptance checklist for a persistent B2B discovery cache. Phase 1 is the only phase implemented. Later phases are specified so they are not redesigned from scratch, and they are not built yet.
+This document is the audit, the target design, and the acceptance checklist for a persistent B2B discovery cache. Phases 1 through 5 are implemented. Phase 6 is not. Live public search stays off, and paid global calls stay off until an operator opens every gate below.
 
 ## Audit (current system)
 
@@ -109,7 +109,13 @@ The validate stage counts eligible and preferred-complete cached people with the
 
 ### Phase 5 — enrichment budgets
 
-Reuse the current email and company providers. Skip fresh fields. Order and enable providers explicitly. Reserve daily, monthly, global, and per-provider budget atomically before a paid call. Record requests, successes, failures, rate limits, credits, and estimated cost. A missing price fails closed. Credentials and a spending limit are both required. Metrics come from the database: people, companies, today, week, email status, country, industry, function, seniority, provider, stale rows, prevented duplicates, jobs, and cost.
+Implemented for global jobs only. Customer searches still use their existing environment keys and do not open a global reservation.
+
+Gates, all required before a call: the paid switch is on (default off), the email or verify channel is not paused (default paused), the provider is enabled, a platform credential exists, an approved maximum price is at least 1 minor unit, a rate cap is configured and not exhausted, and global daily, global monthly, provider daily, and provider monthly budgets can reserve that maximum. The reservation is a conditional SQL update. The same idempotency key does not reserve twice. A retry uses a new attempt and a new reservation. A failed or crashed call keeps the maximum when the final charge is unknown. A known actual at or below the maximum settles that amount and releases the rest. An actual above the maximum is not recorded as known and the reserved maximum stays held. Credits are stored as credits and are not converted to money. Empty ledgers are null, not zero.
+
+Existing Hunter, Tomba, LeadMagic, Prospeo, and Findymail classes can be constructed with the stored platform key. Tests replace that call with a fixture. Company research has no adapter and the enrich stage reports `unavailable`. Live public search stays off. Fresh email fields are skipped. Suppression is checked before a call. An inferred result is not marked verified or contactable. Field freshness stores source, enriched, verified, and next-due timestamps from the field-priority refresh hours.
+
+What this checkpoint does not prove: Postgres multi-worker reservation locking under load, DNS-rebinding protection for outbound URLs, a real provider invoice, or a currency conversion. SQLite coverage is two connections racing one conditional update. Current adapters do not return a currency amount, so a real call stays an unknown charge at the reserved maximum.
 
 ### Phase 6 — production readiness
 
@@ -147,7 +153,7 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] A disabled run does not call public search or paid email providers.
 - [x] Fresh cache rows are not refreshed.
 - [x] Overview says "Email lookup queued" when discovery is finished and the enrichment job is only queued.
-- [ ] Live public search and paid enrichment. Both stay hard-off until a budget ledger exists.
+- [x] Paid enrichment has a budget ledger and stays off unless every gate passes. Live public search stays hard-off.
 - [ ] Postgres SKIP LOCKED is implemented for the job queue and is not what SQLite uses. Multi-worker SQLite is not a supported production lock.
 
 ### Phase 3
@@ -158,7 +164,7 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] Cost is reported as unavailable. Worker state is unknown without a persisted lease.
 - [x] Archive and CSV export do not delete evidence. CSV formula characters are prefixed.
 - [x] Targeting and field priorities are operator pages backed by the database.
-- [ ] Budgets, provider spend, and enrichment execution. Those stay unavailable on purpose.
+- [x] Provider, usage, and cache-health pages read the database. Company research stays unavailable.
 
 ### Phase 4
 
@@ -167,13 +173,18 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] A missing optional field does not discard a prospect. A missing required field is ineligible and the row remains.
 - [x] The paused US and Europe technology preset does not create people and is not due.
 - [x] Ordinary users and workspace owners receive 403. Criteria survive a new database session.
-- [ ] Enrichment sources and verification. Stored only, reported unavailable, until Phase 5.
+- [x] Email enrichment source can be stored and is used only when the paid gates pass. Other fields stay unavailable.
 
 ### Phase 5
 
-- [ ] Paid calls do not run without a key and a spending limit.
-- [ ] Unknown price fails closed.
-- [ ] Usage rows explain requests, failures, rate limits, and cost.
+- [x] A paid call is refused before the adapter runs when the credential, price, rate cap, or budget is missing. A zero price is rejected.
+- [x] Unknown and crashed charges keep the reserved maximum. A retry reserves again. The same key does not reserve twice.
+- [x] Two SQLite connections cannot both reserve the last unit. Postgres concurrency is not tested here.
+- [x] A fresh email field skips the call. Inferred is not verified or contactable. Suppression skips the call.
+- [x] Customer enrichment does not create a global reservation. Workspace environment keys are not a global credential.
+- [x] Usage separates estimated, actual, and unknown. An empty ledger is null, not zero. Cache health counts come from SQL.
+- [ ] A real provider HTTP call, invoice reconciliation, and DNS-rebinding checks. Those stay out of this checkpoint.
+- [ ] Postgres `SKIP LOCKED` under concurrent budget reservations. The tested race is SQLite's conditional update.
 
 ### Phase 6
 

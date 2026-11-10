@@ -18,6 +18,7 @@ from backend.routers import (
     cache,
     crm,
     discovery_control,
+    discovery_spend,
     organizations,
     people,
     platform,
@@ -72,6 +73,7 @@ app.include_router(crm.router)
 app.include_router(platform.router)
 app.include_router(cache.router)
 app.include_router(discovery_control.router)
+app.include_router(discovery_spend.router)
 
 
 @app.get("/api/health")

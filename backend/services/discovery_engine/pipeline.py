@@ -12,11 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import DiscoveryRun, DiscoveryStageAttempt, DiscoveryTarget, GlobalPerson
 from backend.services.discovery_engine.backoff import RateLimited
-from backend.services.discovery_engine.settings import (
-    LIVE_PUBLIC_SEARCH_ENABLED,
-    PAID_PROVIDERS_ENABLED,
-    ensure_settings,
-)
+from backend.services.discovery_engine.settings import LIVE_PUBLIC_SEARCH_ENABLED, ensure_settings
 from backend.services.global_cache.normalize import country_code
 
 STAGES = (
@@ -118,17 +114,15 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
             _record(db, run, stage, "cancelled", "Cancelled between stages", attempt)
             db.commit()
             return
-        if stage in PAID_STAGES or not PAID_PROVIDERS_ENABLED:
-            if stage in PAID_STAGES:
-                _record(
-                    db,
-                    run,
-                    stage,
-                    "skipped",
-                    "Paid providers are disabled. No credential or budget ledger is consulted because spend cannot be reserved.",
-                    attempt,
-                )
-                continue
+        if stage in PAID_STAGES:
+            from backend.services.discovery_engine.enrich import run_email_stage, run_enrich_stage
+
+            if stage == "enrich":
+                paid_status, paid_detail = run_enrich_stage(settings)
+            else:
+                paid_status, paid_detail = run_email_stage(db, run, target, settings, attempt)
+            _record(db, run, stage, paid_status, paid_detail, attempt)
+            continue
         if stage == "discover":
             _record(db, run, stage, discover_status, discover_detail, attempt)
             continue

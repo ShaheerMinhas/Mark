@@ -156,6 +156,7 @@ class FieldRuleIn(BaseModel):
     priority: int = 100
     refresh_hours: int = 168
     verification_required: bool = False
+    enrichment_source: str | None = None
 
 
 class CategoryIn(BaseModel):
@@ -267,7 +268,7 @@ def list_fields(admin: User = Depends(require_platform_admin), db: Session = Dep
     rows = db.query(DiscoveryFieldRule).order_by(DiscoveryFieldRule.priority.asc()).all()
     return {
         "enrichment_application": "unavailable",
-        "detail": "Collection and required/preferred/optional are used when matching. Enrichment source and verification are stored for Phase 5 and are not applied.",
+        "detail": "Collection and required/preferred/optional are used when matching. Email find and verify run only through the paid gates. Other fields have no adapter.",
         "items": [
             {
                 "field_name": row.field_name,
@@ -276,8 +277,8 @@ def list_fields(admin: User = Depends(require_platform_admin), db: Session = Dep
                 "priority": row.priority,
                 "refresh_hours": row.refresh_hours,
                 "verification_required": row.verification_required,
-                "enrichment_source": None,
-                "enrichment_source_status": "unavailable",
+                "enrichment_source": row.enrichment_source if row.field_name == "email" else None,
+                "enrichment_source_status": "gated" if row.field_name == "email" else "unavailable",
             }
             for row in rows
         ],
@@ -304,9 +305,19 @@ def update_field(
     row.priority = body.priority
     row.refresh_hours = body.refresh_hours
     row.verification_required = body.verification_required
-    row.enrichment_source = None
+    if body.enrichment_source:
+        from backend.services.discovery_engine.spend import PROVIDERS
+
+        if field_name != "email":
+            raise HTTPException(status_code=400, detail="No enrichment adapter for this field")
+        if body.enrichment_source not in PROVIDERS:
+            raise HTTPException(status_code=400, detail="Unknown provider")
+        row.enrichment_source = body.enrichment_source
+    else:
+        row.enrichment_source = None
     db.commit()
-    return {"field_name": row.field_name, "requirement": row.requirement, "enrichment_source_status": "unavailable"}
+    status = "gated" if field_name == "email" else "unavailable"
+    return {"field_name": row.field_name, "requirement": row.requirement, "enrichment_source_status": status}
 
 
 @router.post("/targets/{target_id}/start")
@@ -381,12 +392,15 @@ def _settings_out(row) -> dict:
     return {
         "enabled": bool(row.enabled),
         "live_public_search_enabled": False,
-        "paid_providers_enabled": False,
+        "paid_providers_enabled": bool(row.paid_providers_enabled),
+        "pause_enrichment": bool(getattr(row, "pause_enrichment", True)),
+        "pause_email": bool(getattr(row, "pause_email", True)),
+        "pause_verify": bool(getattr(row, "pause_verify", True)),
         "max_concurrency": row.max_concurrency,
         "max_runs_per_tick": row.max_runs_per_tick,
         "max_runs_per_hour": row.max_runs_per_hour,
         "max_runs_per_day": row.max_runs_per_day,
-        "detail": "Live search and paid providers stay off in this build, even when scheduling is enabled.",
+        "detail": "Live public search stays off. Paid email runs only when that switch is on, the channel is not paused, and a reservation succeeds.",
     }
 
 

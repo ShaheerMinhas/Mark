@@ -59,6 +59,13 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
     "discovery_settings": (
         ("max_runs_per_hour", "INTEGER DEFAULT 4"),
         ("max_runs_per_day", "INTEGER DEFAULT 24"),
+        ("pause_enrichment", "BOOLEAN DEFAULT 1"),
+        ("pause_email", "BOOLEAN DEFAULT 1"),
+        ("pause_verify", "BOOLEAN DEFAULT 1"),
+    ),
+    "provider_usage": (
+        ("scope", "VARCHAR(16)"),
+        ("reservation_id", "INTEGER"),
     ),
     "global_people": (
         ("archived_at", "DATETIME"),

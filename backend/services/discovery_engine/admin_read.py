@@ -108,8 +108,11 @@ def overview(db: Session) -> dict:
         "engine": {
             "scheduling_enabled": bool(settings.enabled),
             "live_public_search": "disabled",
-            "paid_providers": "disabled",
-            "detail": "Live search and paid providers are switched off in this build. A run records skipped stages.",
+            "paid_providers": "enabled" if settings.paid_providers_enabled else "disabled",
+            "pause_email": bool(getattr(settings, "pause_email", True)),
+            "pause_verify": bool(getattr(settings, "pause_verify", True)),
+            "pause_enrichment": bool(getattr(settings, "pause_enrichment", True)),
+            "detail": "Live public search stays off. Paid email runs only when that switch is on and a reservation succeeds.",
         },
         "worker": worker_status(db),
         "scheduler": {

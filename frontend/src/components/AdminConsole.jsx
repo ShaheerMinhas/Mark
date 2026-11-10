@@ -6,6 +6,9 @@ const SECTIONS = [
   { id: "engine", label: "Discovery engine" },
   { id: "targeting", label: "Targeting" },
   { id: "fields", label: "Field priorities" },
+  { id: "providers", label: "Providers" },
+  { id: "usage", label: "Usage" },
+  { id: "health", label: "Cache health" },
   { id: "leads", label: "Cached leads" },
   { id: "companies", label: "Cached companies" },
   { id: "jobs", label: "Discovery jobs" },
@@ -49,12 +52,15 @@ export default function AdminConsole() {
           </button>
         ))}
       </div>
-      <p className="meta">Budgets and provider spend are not available in this version. Enrichment sources are stored only and are not applied.</p>
+      <p className="meta">Live public search stays off. Paid email runs only after an operator enables it and a budget reservation succeeds. Company research has no adapter.</p>
       {error && <p className="error-msg">{error}</p>}
       {section === "overview" && <Overview onError={setError} />}
       {section === "engine" && <Engine onError={setError} />}
       {section === "targeting" && <Targeting onError={setError} />}
       {section === "fields" && <FieldPriorities onError={setError} />}
+      {section === "providers" && <Providers onError={setError} />}
+      {section === "usage" && <Usage onError={setError} />}
+      {section === "health" && <CacheHealth onError={setError} />}
       {section === "leads" && <Leads onError={setError} />}
       {section === "companies" && <Companies onError={setError} />}
       {section === "jobs" && <Jobs onError={setError} />}
@@ -917,6 +923,7 @@ function FieldPriorities({ onError }) {
           priority: Number(item.priority),
           refresh_hours: Number(item.refresh_hours),
           verification_required: item.verification_required,
+          enrichment_source: item.field_name === "email" ? (item.enrichment_source || null) : null,
         },
       });
       setNotice(`Saved ${item.field_name}. Enrichment is still unavailable.`);
@@ -973,7 +980,16 @@ function FieldPriorities({ onError }) {
                     onChange={(e) => update(item.field_name, "verification_required", e.target.checked)}
                   />
                 </td>
-                <td>Unavailable</td>
+                <td>
+                  {item.field_name === "email" ? (
+                    <input
+                      aria-label="email enrichment source"
+                      placeholder="Optional provider"
+                      value={item.enrichment_source || ""}
+                      onChange={(e) => update(item.field_name, "enrichment_source", e.target.value)}
+                    />
+                  ) : "Unavailable"}
+                </td>
                 <td><button type="button" className="ghost" onClick={() => save(item)}>Save</button></td>
               </tr>
             ))}
@@ -984,7 +1000,275 @@ function FieldPriorities({ onError }) {
         <button type="button" className="ghost" onClick={() => { setNotice(""); load(); }}>Reset</button>
       </div>
       {notice && <p className="meta">{notice}</p>}
-      <p className="meta">Turning collection off stops that field from filtering. Evidence, identity keys, and suppression stay. A required field changes eligibility. It does not delete the person.</p>
+      <p className="meta">Turning collection off stops that field from filtering. Evidence, identity keys, and suppression stay. A required field changes eligibility. It does not delete the person. Email is the only field with an adapter, and it still does not run until the paid gates pass.</p>
+    </div>
+  );
+}
+
+function money(minor, status) {
+  if (minor === null || minor === undefined) return status === "unknown" ? "Unknown" : "None recorded";
+  return `${minor} minor units`;
+}
+
+function Providers({ onError }) {
+  const [settings, setSettings] = useState(null);
+  const [items, setItems] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+  const [secret, setSecret] = useState("");
+  const [budget, setBudget] = useState({ scope: "global", provider_name: "", period: "day", currency: "USD", limit_minor: "" });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [settingsBody, providerBody, budgetBody] = await Promise.all([
+        api("/api/platform/discovery/spend-settings"),
+        api("/api/platform/discovery/providers"),
+        api("/api/platform/discovery/budgets"),
+      ]);
+      setSettings(settingsBody);
+      setItems(providerBody.items || []);
+      setBudgets(budgetBody.items || []);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function patchItem(name, key, value) {
+    setItems((current) => current.map((item) => (item.name === name ? { ...item, [key]: value } : item)));
+  }
+
+  async function saveSettings(event) {
+    event.preventDefault();
+    setNotice("");
+    try {
+      setSettings(await api("/api/platform/discovery/spend-settings", { method: "PATCH", body: settings }));
+      setNotice("Switches saved. Live search stays off.");
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  async function saveProvider(item) {
+    setNotice("");
+    try {
+      await api(`/api/platform/discovery/providers/${item.name}`, {
+        method: "PATCH",
+        body: { enabled: item.enabled, priority: Number(item.priority), rate_per_hour: Number(item.rate_per_hour) },
+      });
+      const price = item.draft_price === "" || item.draft_price === undefined ? null : Number(item.draft_price);
+      if (price !== null) {
+        await api(`/api/platform/discovery/providers/${item.name}/price`, {
+          method: "PUT",
+          body: { operation: "email_find", currency: "USD", max_cost_minor: price },
+        });
+      }
+      if (secret.trim() && secret.startsWith(`${item.name}:`)) {
+        await api(`/api/platform/discovery/providers/${item.name}/credential`, {
+          method: "PUT",
+          body: { api_key: secret.slice(item.name.length + 1) },
+        });
+        setSecret("");
+      }
+      setNotice(`Saved ${item.name}. The credential value is not shown again.`);
+      load();
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  async function saveBudget(event) {
+    event.preventDefault();
+    setNotice("");
+    try {
+      await api("/api/platform/discovery/budgets", {
+        method: "PUT",
+        body: {
+          scope: budget.scope,
+          provider_name: budget.scope === "global" ? "" : budget.provider_name,
+          period: budget.period,
+          currency: budget.currency,
+          limit_minor: Number(budget.limit_minor),
+        },
+      });
+      setNotice("Budget saved.");
+      load();
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  if (loading) return <div className="empty">Loading providers…</div>;
+  if (!items.length) return <div className="empty">No providers are registered.</div>;
+  return (
+    <div className="panel admin-note">
+      <p>These are global-job adapters. Customer workspace keys are not used and are not shown here. A price of zero is rejected. Company research is unavailable.</p>
+      <form onSubmit={saveSettings}>
+        <label className="inline-check">
+          <input type="checkbox" checked={Boolean(settings?.paid_providers_enabled)} onChange={(e) => setSettings({ ...settings, paid_providers_enabled: e.target.checked })} />
+          Allow paid global calls
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={Boolean(settings?.pause_enrichment)} onChange={(e) => setSettings({ ...settings, pause_enrichment: e.target.checked })} />
+          Pause company enrichment
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={Boolean(settings?.pause_email)} onChange={(e) => setSettings({ ...settings, pause_email: e.target.checked })} />
+          Pause email finding
+        </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={Boolean(settings?.pause_verify)} onChange={(e) => setSettings({ ...settings, pause_verify: e.target.checked })} />
+          Pause email verification
+        </label>
+        <div className="people-toolbar">
+          <button type="submit" className="btn-new-search">Save switches</button>
+        </div>
+      </form>
+      <p className="meta">{settings?.detail} Live public search: {settings?.live_public_search}.</p>
+      <div className="people-table-wrap">
+        <table className="people-table">
+          <thead>
+            <tr><th>Provider</th><th>Enabled</th><th>Priority</th><th>Rate / hour</th><th>Credential</th><th>Find price max</th><th>Company</th><th></th></tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.name}>
+                <td>{item.name}</td>
+                <td><input type="checkbox" aria-label={`${item.name} enabled`} checked={item.enabled} onChange={(e) => patchItem(item.name, "enabled", e.target.checked)} /></td>
+                <td><input type="number" aria-label={`${item.name} priority`} value={item.priority} onChange={(e) => patchItem(item.name, "priority", e.target.value)} /></td>
+                <td><input type="number" min="0" aria-label={`${item.name} rate`} value={item.rate_per_hour} onChange={(e) => patchItem(item.name, "rate_per_hour", e.target.value)} /></td>
+                <td>{item.credential_configured ? "Configured" : "Missing"}</td>
+                <td><input type="number" min="1" aria-label={`${item.name} price`} placeholder={item.prices?.find((price) => price.operation === "email_find")?.max_cost_minor ?? "minor units"} value={item.draft_price ?? ""} onChange={(e) => patchItem(item.name, "draft_price", e.target.value)} /></td>
+                <td>Unavailable</td>
+                <td><button type="button" className="ghost" onClick={() => saveProvider(item)}>Save</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <form className="people-toolbar" onSubmit={(event) => { event.preventDefault(); }}>
+        <label>Credential
+          <input type="password" aria-label="Platform credential" placeholder="provider:key" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
+        </label>
+        <p className="meta">Type the provider name, a colon, and the key, then save that row. The key is not displayed after saving.</p>
+      </form>
+      <form className="people-toolbar" onSubmit={saveBudget}>
+        <label>Scope
+          <select value={budget.scope} onChange={(e) => setBudget({ ...budget, scope: e.target.value })}>
+            <option value="global">Global</option>
+            <option value="provider">Provider</option>
+          </select>
+        </label>
+        <label>Provider
+          <input aria-label="Budget provider" value={budget.provider_name} onChange={(e) => setBudget({ ...budget, provider_name: e.target.value })} disabled={budget.scope === "global"} />
+        </label>
+        <label>Period
+          <select value={budget.period} onChange={(e) => setBudget({ ...budget, period: e.target.value })}>
+            <option value="day">Daily</option>
+            <option value="month">Monthly</option>
+          </select>
+        </label>
+        <label>Currency
+          <input aria-label="Budget currency" value={budget.currency} onChange={(e) => setBudget({ ...budget, currency: e.target.value })} />
+        </label>
+        <label>Limit minor units
+          <input type="number" min="1" aria-label="Budget limit" value={budget.limit_minor} onChange={(e) => setBudget({ ...budget, limit_minor: e.target.value })} />
+        </label>
+        <button type="submit" className="ghost">Save budget</button>
+        <button type="button" className="ghost" onClick={() => { setNotice(""); setSecret(""); load(); }}>Reset</button>
+      </form>
+      {!budgets.length && <div className="empty">No spending limit has been saved. Paid calls stay denied until global and provider daily and monthly limits exist.</div>}
+      {!!budgets.length && (
+        <ul className="mini-list">
+          {budgets.map((item) => (
+            <li key={`${item.scope}-${item.provider_name}-${item.period}`}>
+              {item.scope} {item.provider_name || "all"} {item.period}: limit {item.limit_minor} {item.currency}. Reserved {item.reserved_minor}. Settled {item.settled_minor}. Unknown {item.unknown_minor}.
+            </li>
+          ))}
+        </ul>
+      )}
+      {notice && <p className="meta">{notice}</p>}
+    </div>
+  );
+}
+
+function Usage({ onError }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/api/platform/discovery/usage")
+      .then((body) => { if (!cancelled) setData(body); })
+      .catch((err) => { if (!cancelled) onError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [onError]);
+
+  if (loading) return <div className="empty">Loading usage…</div>;
+  if (!data) return <div className="empty">Usage is not available.</div>;
+  const denominators = data.denominators || {};
+  return (
+    <div className="panel admin-note">
+      <p>{data.currency_note}</p>
+      <div className="metric-row">
+        <div className="metric"><span>Requests</span><strong>{data.requests}</strong></div>
+        <div className="metric"><span>Successes</span><strong>{data.successes}</strong></div>
+        <div className="metric"><span>Failures</span><strong>{data.failures}</strong></div>
+        <div className="metric"><span>429</span><strong>{data.rate_limited}</strong></div>
+      </div>
+      <p className="meta">Estimated {money(data.estimated_cost_minor, data.estimated_cost_status)} ({data.estimated_cost_status}). Actual {money(data.actual_cost_minor, data.actual_cost_status)} ({data.actual_cost_status}). Unknown {money(data.unknown_cost_minor, data.unknown_cost_status)} ({data.unknown_cost_status}).</p>
+      <p className="meta">Credits {data.credits === null ? "unknown" : data.credits}. Cost per verified person: {data.cost_per_verified_minor === null ? data.cost_per_verified_status : data.cost_per_verified_minor}.</p>
+      <p className="meta">Discovered {denominators.discovered_people ?? 0}. Enriched {denominators.enriched_people ?? 0}. Verified {denominators.verified_people ?? 0}.</p>
+      {!Object.keys(data.providers || {}).length && <div className="empty">No global provider calls have been recorded.</div>}
+      {!!Object.keys(data.providers || {}).length && (
+        <ul className="mini-list">
+          {Object.entries(data.providers).map(([name, count]) => <li key={name}>{name}: {count} calls</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function CacheHealth({ onError }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api("/api/platform/discovery/cache-health")
+      .then((body) => { if (!cancelled) setData(body); })
+      .catch((err) => { if (!cancelled) onError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [onError]);
+
+  if (loading) return <div className="empty">Loading cache health…</div>;
+  if (!data) return <div className="empty">Cache health is not available.</div>;
+  return (
+    <div className="panel admin-note">
+      <p>{data.detail}</p>
+      <div className="metric-row">
+        <div className="metric"><span>People</span><strong>{data.people}</strong></div>
+        <div className="metric"><span>Companies</span><strong>{data.companies}</strong></div>
+        <div className="metric"><span>Stale fields</span><strong>{data.stale_fields}</strong></div>
+        <div className="metric"><span>Fresh fields</span><strong>{data.fresh_fields}</strong></div>
+      </div>
+      <p className="meta">Discovered today {data.people_today}. This week {data.people_week}. Ineligible evidence rows {data.ineligible_evidence}.</p>
+      <h3>Email status</h3>
+      {!Object.keys(data.email_status || {}).length && <div className="empty">No cached people.</div>}
+      <ul className="mini-list">
+        {Object.entries(data.email_status || {}).map(([name, count]) => <li key={name}>{name || "null"}: {count}</li>)}
+      </ul>
+      <h3>Quality tier</h3>
+      <ul className="mini-list">
+        {Object.entries(data.quality_tier || {}).map(([name, count]) => <li key={name}>{name}: {count}</li>)}
+      </ul>
     </div>
   );
 }

@@ -106,10 +106,36 @@ def _step_targeting(bind) -> None:
         session.close()
 
 
+def _step_budgets(bind) -> None:
+    """Provider, price, budget, and freshness tables. Nothing is enabled and nobody is created."""
+    names = (
+        "discovery_providers",
+        "discovery_provider_secrets",
+        "discovery_provider_prices",
+        "discovery_budgets",
+        "discovery_budget_periods",
+        "discovery_reservations",
+        "global_field_freshness",
+    )
+    Base.metadata.create_all(
+        bind=bind,
+        tables=[Base.metadata.tables[name] for name in names if name in Base.metadata.tables],
+    )
+    from backend.services.discovery_engine.spend import seed_providers
+
+    session = Session(bind=bind)
+    try:
+        seed_providers(session)
+        session.commit()
+    finally:
+        session.close()
+
+
 STEPS: tuple[tuple[int, str, object], ...] = (
     (1, "global_discovery_cache", _step_cache_tables),
     (2, "discovery_scheduler", _step_scheduler),
     (3, "targeting_rules", _step_targeting),
+    (4, "enrichment_budgets", _step_budgets),
 )
 
 
