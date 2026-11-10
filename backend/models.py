@@ -238,6 +238,8 @@ class SearchJob(Base):
     emails_found: Mapped[int] = mapped_column(Integer, default=0)
     phones_found: Mapped[int] = mapped_column(Integer, default=0)
     errors_count: Mapped[int] = mapped_column(Integer, default=0)
+    #: People copied from the shared public cache into this search. Not a second lead model.
+    cache_served: Mapped[int] = mapped_column(Integer, default=0)
 
     owner: Mapped[User] = relationship(back_populates="searches")
     organization: Mapped[Organization | None] = relationship(back_populates="searches")
@@ -675,6 +677,157 @@ class AuditLog(Base):
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SchemaMigration(Base):
+    """Applied schema versions. ``create_all`` does not record these."""
+
+    __tablename__ = "schema_migrations"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    applied_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GlobalCompany(Base):
+    """Shared company evidence. Not a workspace account and not a CRM company."""
+
+    __tablename__ = "global_companies"
+    __table_args__ = (
+        Index("ix_global_companies_name", "name_normalized"),
+        Index("ix_global_companies_country", "country_code"),
+        Index("ix_global_companies_industry", "industry"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    name_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    subindustry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    provider_ids: Mapped[dict] = mapped_column(JSON, default=dict)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_refresh_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GlobalPerson(Base):
+    """Shared public prospect. Workspace notes, tags, and CRM stay on ``lead_records``."""
+
+    __tablename__ = "global_people"
+    __table_args__ = (
+        Index("ix_global_people_country", "country_code"),
+        Index("ix_global_people_industry", "industry"),
+        Index("ix_global_people_domain", "domain"),
+        Index("ix_global_people_email_status", "email_status"),
+        Index("ix_global_people_seniority", "seniority"),
+        Index("ix_global_people_function", "job_function"),
+        Index("ix_global_people_tier_updated", "quality_tier", "updated_at"),
+        Index("ix_global_people_name", "name_normalized"),
+        Index("ix_global_people_profile", "profile_url_normalized"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    given_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    family_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    name_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    job_function: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    seniority: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("global_companies.id"), nullable=True, index=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    company_name_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    subindustry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    employee_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    company_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    profile_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    profile_url_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quality_score: Mapped[float] = mapped_column(Float, default=0.0)
+    quality_tier: Mapped[str] = mapped_column(String(32), default="basic")
+    discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_refresh_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    company: Mapped[GlobalCompany | None] = relationship()
+
+
+class GlobalPersonTechnology(Base):
+    __tablename__ = "global_person_technologies"
+    __table_args__ = (
+        Index("uq_global_person_tech", "person_id", "technology", unique=True),
+        Index("ix_global_person_tech_name", "technology"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("global_people.id"), index=True)
+    technology: Mapped[str] = mapped_column(String(64))
+
+
+class GlobalEvidence(Base):
+    """Provenance for one field. Ineligible rows are stored but never served."""
+
+    __tablename__ = "global_evidence"
+    __table_args__ = (
+        Index("ix_global_evidence_subject", "subject_type", "subject_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject_type: Mapped[str] = mapped_column(String(16))
+    subject_id: Mapped[int] = mapped_column(Integer)
+    field_name: Mapped[str] = mapped_column(String(64))
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_record_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    share_scope: Mapped[str] = mapped_column(String(32), default="public")
+    eligible: Mapped[bool] = mapped_column(Boolean, default=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GlobalIdentityKey(Base):
+    __tablename__ = "global_identity_keys"
+    __table_args__ = (
+        Index("uq_global_identity_key", "kind", "key_value", unique=True),
+        Index("ix_global_identity_subject", "subject_type", "subject_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    key_value: Mapped[str] = mapped_column(String(255))
+    subject_type: Mapped[str] = mapped_column(String(16))
+    subject_id: Mapped[int] = mapped_column(Integer)
+
+
+class CachePolicy(Base):
+    """One row of quality rules. Tiers are labels, not accuracy guarantees."""
+
+    __tablename__ = "cache_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), default="default")
+    rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class Notification(Base):

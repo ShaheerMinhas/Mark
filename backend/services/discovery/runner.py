@@ -286,8 +286,30 @@ def run_discovery(db: Session, job: SearchJob, *, final_attempt: bool = True) ->
         job,
         SearchJobStatus.DISCOVERING,
         "discovery",
-        message="Searching public profiles…",
+        message="Checking the shared cache, then public profiles if needed…",
     )
+
+    from backend.services.global_cache.serve import serve_cached_people
+
+    coverage = serve_cached_people(db, job)
+    if coverage.sufficient:
+        search_state.finish(
+            db,
+            job,
+            SearchJobStatus.COMPLETED,
+            message=(
+                f"Served {coverage.served} people from the shared cache. "
+                "Live search was not needed."
+            ),
+        )
+        _maybe_enqueue_enrichment(db, job)
+        return
+    if coverage.served:
+        job.message = (
+            f"{coverage.served} people came from the shared cache. "
+            "Live search is continuing because that does not cover this request."
+        )
+        db.commit()
 
     filters = dict(job.filters or {})
     max_candidates = candidate_pool_target(filters)
@@ -561,12 +583,20 @@ def _qualify_and_finish(db: Session, job: SearchJob, *, discovery_ms: int) -> No
     else:
         search_state.finish(db, job, SearchJobStatus.COMPLETED, message=summary)
 
-    if promoted:
-        enrichment_mode = str((job.filters or {}).get("enrichment_mode") or "after_discovery").lower()
-        if enrichment_mode != "selected":
-            from backend.services.search_jobs import enqueue_enrichment
+    if int(getattr(job, "cache_served", 0) or 0) and "shared cache" not in (job.message or ""):
+        job.message = f"{job.message} · {int(job.cache_served)} from the shared cache"
+        db.commit()
+    _maybe_enqueue_enrichment(db, job)
 
-            enqueue_enrichment(db, job)
+
+def _maybe_enqueue_enrichment(db: Session, job: SearchJob) -> None:
+    if int(job.qualified_leads or 0) <= 0:
+        return
+    enrichment_mode = str((job.filters or {}).get("enrichment_mode") or "after_discovery").lower()
+    if enrichment_mode != "selected":
+        from backend.services.search_jobs import enqueue_enrichment
+
+        enqueue_enrichment(db, job)
 
 
 def qualified_candidate_query(db: Session, search_job_id: int):

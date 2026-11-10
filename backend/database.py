@@ -74,6 +74,7 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("emails_found", "INTEGER DEFAULT 0"),
         ("phones_found", "INTEGER DEFAULT 0"),
         ("errors_count", "INTEGER DEFAULT 0"),
+        ("cache_served", "INTEGER DEFAULT 0"),
     ),
     "lead_records": (
         ("company_domain", "VARCHAR(255)"),
@@ -169,13 +170,27 @@ def _ensure_indexes(bind=None) -> None:
                 )
 
 
+def upgrade_database(bind=None) -> None:
+    """Bring a fresh or already-populated database up to the current schema.
+
+    Safe to run more than once. Does not copy private leads into the shared cache.
+    """
+    from backend import models  # noqa: F401
+
+    bind = bind or engine
+    Base.metadata.create_all(bind=bind)
+    _normalize_search_job_statuses(bind)
+    _ensure_columns(bind)
+    _ensure_indexes(bind)
+    from backend.migrations import apply_migrations
+
+    apply_migrations(bind)
+
+
 def init_db():
     from backend import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-    _normalize_search_job_statuses()
-    _ensure_columns()
-    _ensure_indexes()
+    upgrade_database(engine)
     try:
         from backend.services.dbwiki import refresh_dbwiki
 
