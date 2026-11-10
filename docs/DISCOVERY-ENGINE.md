@@ -91,7 +91,11 @@ Suppression is checked on cache write and on cache serve. Deleting a workspace l
 
 ### Phase 3 — admin screens
 
-Real data only: Overview, Cached leads, Cached companies, Jobs, and start/pause/resume/run-now. Later navigation: Overview, Discovery Engine, Targeting Configurations, Field Priorities, Cached Leads, Cached Companies, Discovery Jobs, Provider Management, Usage and Costs, Cache Health, System Settings. Organization admin is not the same as a platform operator. Add that role before these screens.
+Implemented for a platform operator only: Overview, Discovery engine, Cached leads, Cached companies, and Discovery jobs. Counts and groupings are SQL aggregates. Estimated cost is `unavailable`. Worker state is the planner lease, or `unknown` when no worker has written one. Ordinary users and workspace owners get 403. The customer navigation does not show the console unless `is_platform_admin` is true, and the APIs still reject everyone else.
+
+Targeting builder, field priorities, provider management, usage costs, and cache health are not pages. The console says they are not available. Archive sets `archived_at` and keeps evidence. Corrections keep the previous value as evidence. CSV export is admin-only and prefixes formula characters.
+
+Scheduling can be saved as enabled. Live search and paid calls remain hard-off, so a run-now job records skipped stages. Pause does not delete queued runs.
 
 ### Phase 4 — targeting
 
@@ -144,9 +148,12 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 
 ### Phase 3
 
-- [ ] Admin pages read persisted counts and job rows.
-- [ ] Start, pause, resume, and run-now call real APIs.
-- [ ] A non-admin cannot open them.
+- [x] Overview, engine controls, cached leads, cached companies, and jobs read the database.
+- [x] Start, pause, resume, stop scheduling, run-now, and cancel call the operator APIs.
+- [x] A customer or workspace owner is rejected by the API.
+- [x] Cost is reported as unavailable. Worker state is unknown without a persisted lease.
+- [x] Archive and CSV export do not delete evidence. CSV formula characters are prefixed.
+- [ ] Targeting builder, budgets, and the rest of the operator navigation. Those stay unavailable on purpose.
 
 ### Phase 4
 

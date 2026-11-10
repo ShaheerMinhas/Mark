@@ -75,6 +75,55 @@ def try_acquire_planner(db: Session, owner: str, *, lease_seconds: int = 30) -> 
     return updated == 1
 
 
+def within_run_caps(db: Session, now: datetime) -> bool:
+    settings = ensure_settings(db)
+    hour_ago = now - timedelta(hours=1)
+    day_ago = now - timedelta(days=1)
+    hourly = db.query(DiscoveryRun).filter(DiscoveryRun.created_at >= hour_ago).count()
+    daily = db.query(DiscoveryRun).filter(DiscoveryRun.created_at >= day_ago).count()
+    return hourly < int(settings.max_runs_per_hour or 4) and daily < int(settings.max_runs_per_day or 24)
+
+
+def enqueue_run(db: Session, target: DiscoveryTarget, *, slot: datetime, key: str) -> DiscoveryRun | None:
+    if db.query(DiscoveryRun).filter(DiscoveryRun.idempotency_key == key).first():
+        return None
+    run = DiscoveryRun(
+        target_id=target.id,
+        idempotency_key=key,
+        status="queued",
+        people_limit=int(target.max_people_per_run or 25),
+        query_limit=int(target.max_queries_per_run or 5),
+        scheduled_for=slot,
+    )
+    db.add(run)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return None
+    queued = queue.enqueue(
+        db,
+        JobType.DISCOVERY_PIPELINE.value,
+        {"run_id": run.id},
+        max_attempts=3,
+    )
+    run.queue_job_id = queued.id
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+def enqueue_run_now(db: Session, target: DiscoveryTarget) -> DiscoveryRun:
+    now = datetime.utcnow()
+    if not within_run_caps(db, now):
+        raise RuntimeError("Hourly or daily run cap has been reached")
+    key = f"run-now:{target.id}:{now.isoformat()}"
+    run = enqueue_run(db, target, slot=now, key=key)
+    if run is None:
+        raise RuntimeError("Could not queue that run")
+    return run
+
+
 def plan_due_targets(db: Session, *, now: datetime | None = None, planner_id: str) -> int:
     """Create runs for due active targets. Returns how many new runs were queued.
 
@@ -102,37 +151,24 @@ def plan_due_targets(db: Session, *, now: datetime | None = None, planner_id: st
     )
     created = 0
     for target in due:
+        if not within_run_caps(db, now):
+            break
         slot = target.next_run_at or now
         key = f"target:{target.id}:slot:{slot.isoformat()}"
         if db.query(DiscoveryRun).filter(DiscoveryRun.idempotency_key == key).first():
             target.next_run_at = next_run_at(target, slot)
             target.updated_at = now
+            db.commit()
             continue
-        run = DiscoveryRun(
-            target_id=target.id,
-            idempotency_key=key,
-            status="queued",
-            people_limit=int(target.max_people_per_run or 25),
-            query_limit=int(target.max_queries_per_run or 5),
-            scheduled_for=slot,
-        )
-        db.add(run)
-        try:
-            db.flush()
-        except IntegrityError:
-            db.rollback()
+        before = db.query(DiscoveryRun).count()
+        run = enqueue_run(db, target, slot=slot, key=key)
+        if run is None:
             continue
-        queued = queue.enqueue(
-            db,
-            JobType.DISCOVERY_PIPELINE.value,
-            {"run_id": run.id},
-            max_attempts=3,
-        )
-        run.queue_job_id = queued.id
+        target = db.get(DiscoveryTarget, target.id)
         target.next_run_at = next_run_at(target, slot)
         target.updated_at = now
-        created += 1
-    db.commit()
+        db.commit()
+        created += db.query(DiscoveryRun).count() - before
     return created
 
 

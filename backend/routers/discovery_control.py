@@ -4,15 +4,31 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.dependencies import require_platform_admin
 from backend.models import DiscoveryRun, DiscoveryTarget, User
-from backend.services.discovery_engine.schedule import next_run_at, validate_timezone
-from backend.services.discovery_engine.settings import ensure_settings
+from backend.services.discovery_engine.admin_read import (
+    archive_company,
+    archive_person,
+    correct_person,
+    list_companies,
+    list_people,
+    list_runs,
+    overview,
+    people_csv,
+    person_detail,
+    run_detail,
+    _company_dict,
+    _person_dict,
+    _run_dict,
+)
+from backend.services.discovery_engine.schedule import enqueue_run_now, validate_timezone
+from backend.services.discovery_engine.settings import ensure_settings, update_limits
 from backend.services.discovery_engine.suppression import add_suppression
 
 router = APIRouter(prefix="/api/platform/discovery", tags=["discovery-control"])
@@ -173,15 +189,211 @@ def create_suppression(
     return {"id": row.id, "kind": row.kind, "normalized_value": row.normalized_value}
 
 
-@router.get("/settings")
-def get_settings(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
-    del admin
-    row = ensure_settings(db)
-    db.commit()
+class LimitsIn(BaseModel):
+    enabled: bool = False
+    max_concurrency: int = 1
+    max_runs_per_tick: int = 5
+    max_runs_per_hour: int = 4
+    max_runs_per_day: int = 24
+
+
+class CorrectionIn(BaseModel):
+    title: str | None = None
+    company_name: str | None = None
+    city: str | None = None
+    industry: str | None = None
+    country_code: str | None = None
+    note: str | None = None
+
+
+def _settings_out(row) -> dict:
     return {
         "enabled": bool(row.enabled),
         "live_public_search_enabled": False,
         "paid_providers_enabled": False,
         "max_concurrency": row.max_concurrency,
         "max_runs_per_tick": row.max_runs_per_tick,
+        "max_runs_per_hour": row.max_runs_per_hour,
+        "max_runs_per_day": row.max_runs_per_day,
+        "detail": "Live search and paid providers stay off in this build, even when scheduling is enabled.",
     }
+
+
+@router.get("/overview")
+def discovery_overview(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    return overview(db)
+
+
+@router.get("/targets")
+def list_targets(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    rows = db.query(DiscoveryTarget).order_by(DiscoveryTarget.priority.asc(), DiscoveryTarget.id.asc()).all()
+    return {"items": [_target_out(row) for row in rows]}
+
+
+@router.post("/targets/{target_id}/run-now")
+def run_target_now(target_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    row = db.get(DiscoveryTarget, target_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Target not found")
+    try:
+        run = enqueue_run_now(db, row)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"id": run.id, "status": run.status, "detail": "Queued. This build will not call live search or paid providers."}
+
+
+@router.get("/runs")
+def get_runs(
+    status: str = "",
+    sort: str = "newest",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    total, rows = list_runs(db, status=status, page=page, page_size=page_size, sort=sort)
+    items = []
+    for run in rows:
+        target = db.get(DiscoveryTarget, run.target_id)
+        items.append(_run_dict(run, target.name if target else ""))
+    return {"total": total, "page": page, "page_size": page_size, "items": items}
+
+
+@router.get("/runs/{run_id}")
+def get_run(run_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    body = run_detail(db, run_id)
+    if body is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return body
+
+
+@router.get("/people")
+def admin_people(
+    q: str = "",
+    country: str = "",
+    tier: str = "",
+    include_archived: bool = False,
+    sort: str = "updated",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    total, rows = list_people(
+        db, q=q, country=country, tier=tier, include_archived=include_archived, sort=sort, page=page, page_size=page_size
+    )
+    return {"total": total, "page": page, "page_size": page_size, "items": [_person_dict(row) for row in rows]}
+
+
+@router.get("/people/export")
+def export_people(
+    q: str = "",
+    country: str = "",
+    tier: str = "",
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    _total, rows = list_people(
+        db, q=q, country=country, tier=tier, include_archived=False, sort="name", page=1, page_size=100
+    )
+    return Response(
+        content=people_csv(rows),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cached-people.csv"},
+    )
+
+
+@router.get("/people/{person_id}")
+def admin_person(person_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    body = person_detail(db, person_id)
+    if body is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return body
+
+
+@router.post("/people/{person_id}/archive")
+def archive_cached_person(person_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    row = archive_person(db, person_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return _person_dict(row)
+
+
+@router.post("/people/{person_id}/correct")
+def correct_cached_person(
+    person_id: int,
+    body: CorrectionIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    fields = body.model_dump(exclude={"note"})
+    try:
+        row = correct_person(db, person_id, fields, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return _person_dict(row)
+
+
+@router.get("/companies")
+def admin_companies(
+    q: str = "",
+    country: str = "",
+    include_archived: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    total, rows = list_companies(db, q=q, country=country, include_archived=include_archived, page=page, page_size=page_size)
+    return {"total": total, "page": page, "page_size": page_size, "items": [_company_dict(row) for row in rows]}
+
+
+@router.post("/companies/{company_id}/archive")
+def archive_cached_company(company_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    row = archive_company(db, company_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return _company_dict(row)
+
+
+@router.get("/settings")
+def get_settings(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    row = ensure_settings(db)
+    db.commit()
+    return _settings_out(row)
+
+
+@router.patch("/settings")
+def patch_settings(
+    body: LimitsIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    try:
+        row = update_limits(
+            db,
+            enabled=body.enabled,
+            max_concurrency=body.max_concurrency,
+            max_runs_per_tick=body.max_runs_per_tick,
+            max_runs_per_hour=body.max_runs_per_hour,
+            max_runs_per_day=body.max_runs_per_day,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _settings_out(row)

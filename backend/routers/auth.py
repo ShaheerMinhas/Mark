@@ -40,6 +40,7 @@ def _user_out(db: Session, user: User) -> UserOut:
         email=user.email,
         full_name=user.full_name,
         account_type=user.account_type,
+        is_platform_admin=bool(getattr(user, "is_platform_admin", False)),
         organizations=orgs,
     )
 

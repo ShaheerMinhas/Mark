@@ -30,7 +30,7 @@ class CacheQuery:
 def _filtered(db: Session, query: CacheQuery):
     from backend.services.discovery_engine.suppression import suppressed_people_filter
 
-    q = suppressed_people_filter(db, db.query(GlobalPerson))
+    q = suppressed_people_filter(db, db.query(GlobalPerson).filter(GlobalPerson.archived_at.is_(None)))
     if query.country_codes:
         q = q.filter(GlobalPerson.country_code.in_(query.country_codes))
     if query.industries:

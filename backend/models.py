@@ -718,6 +718,8 @@ class GlobalCompany(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     next_refresh_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    correction_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class GlobalPerson(Base):
@@ -771,6 +773,8 @@ class GlobalPerson(Base):
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     next_refresh_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    correction_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company: Mapped[GlobalCompany | None] = relationship()
 
@@ -849,6 +853,8 @@ class DiscoverySettings(Base):
     paid_providers_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     max_runs_per_tick: Mapped[int] = mapped_column(Integer, default=5)
+    max_runs_per_hour: Mapped[int] = mapped_column(Integer, default=4)
+    max_runs_per_day: Mapped[int] = mapped_column(Integer, default=24)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

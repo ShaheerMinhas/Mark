@@ -45,6 +45,7 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     account_type: AccountType
+    is_platform_admin: bool = False
     organizations: list["OrgMembershipOut"] = []
 
     model_config = {"from_attributes": True}
