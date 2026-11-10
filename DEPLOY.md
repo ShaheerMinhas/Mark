@@ -157,15 +157,41 @@ netlify deploy --prod
 
 ---
 
-## Discovery worker (optional, off by default)
+## Processes
 
-Global discovery does not run inside the web service. Customer searches still use `python -m backend.worker` (or the inline worker). A future operator process is:
+Run the web process and the workers as separate processes. The web process serves the API. It does not crawl and it does not call paid providers.
 
 ```bash
+# web
+MARK_INLINE_WORKER=0 uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+
+# customer search and email jobs
+python -m backend.worker
+
+# global discovery schedules. Leave this stopped until the gates below are set.
 python -m backend.discovery_worker
 ```
 
-Leave it stopped until a budget ledger exists. The process plans schedules and records skipped stages. It does not call live search or paid providers. Those switches are hard-off in code.
+`GET /api/health` reports database reachability and the discovery worker heartbeat. The heartbeat is a database row, not the planner lease. No heartbeat means the worker status is `unknown`. SIGTERM asks the discovery worker to record `stopping` and leave the loop. A crashed job stays leased until the lease expires, then another worker can claim it. Do not run more than one discovery worker on SQLite.
+
+## Backup and restore
+
+Take a Postgres dump before a schema upgrade or a retention run:
+
+```bash
+pg_dump "$DATABASE_URL" --format=custom --file mark.dump
+pg_restore --clean --if-exists --dbname "$DATABASE_URL" mark.dump
+```
+
+`upgrade_database()` adds tables and columns. It does not copy `lead_records` into the shared cache. Run it on a restored copy before pointing traffic at a new database. This repository does not run that upgrade against a production database by itself.
+
+## Turning gates on
+
+Leave these off until an operator has configured them. Turning them on is not a claim that the deployment is production-ready.
+
+- Paid email: platform credential, an approved price above zero, a rate cap, and global plus provider daily and monthly budgets. Customer environment keys are not reused.
+- Public search intent can be saved. Network fetching stays blocked because the legacy search clients are outside the outbound URL policy. Company research has no adapter.
+- Retention archives shared cache rows and suppresses those identities. It does not delete workspace leads and it is not a GDPR workflow.
 
 Platform operators are not created by signing up, and owning a workspace does not make someone an operator. After the person has a normal account:
 

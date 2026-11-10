@@ -24,6 +24,8 @@ def ensure_settings(db: Session) -> DiscoverySettings:
             pause_enrichment=True,
             pause_email=True,
             pause_verify=True,
+            allow_public_search=False,
+            retention_days=None,
             max_concurrency=1,
             max_runs_per_tick=5,
             updated_at=datetime.utcnow(),
@@ -37,6 +39,8 @@ def ensure_settings(db: Session) -> DiscoverySettings:
         row.pause_email = True
     if row.pause_verify is None:
         row.pause_verify = True
+    if row.allow_public_search is None:
+        row.allow_public_search = False
     if not row.max_runs_per_hour:
         row.max_runs_per_hour = 4
     if not row.max_runs_per_day:

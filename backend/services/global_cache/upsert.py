@@ -161,8 +161,15 @@ def _upsert_company(db: Session, prospect: PublicProspect, domain: str | None, c
             discovered_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
-        db.add(row)
-        db.flush()
+        try:
+            with db.begin_nested():
+                db.add(row)
+                db.flush()
+        except IntegrityError:
+            found = db.query(GlobalCompany).filter(GlobalCompany.domain == domain).one_or_none() if domain else None
+            if found is None:
+                raise
+            return found
         return row
     if normalized and row.name_normalized and normalized != row.name_normalized and domain:
         # Same domain, different public name: keep the stored name and do not invent a blend.
@@ -226,6 +233,8 @@ def _bind_keys(db: Session, person_id: int, keys: list[tuple[str, str]], blocked
             .one_or_none()
         )
         if existing:
+            if existing.subject_id != person_id:
+                raise IntegrityError("identity key already belongs to another person", {}, Exception("identity race"))
             continue
         db.add(
             GlobalIdentityKey(

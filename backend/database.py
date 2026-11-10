@@ -62,6 +62,8 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("pause_enrichment", "BOOLEAN DEFAULT 1"),
         ("pause_email", "BOOLEAN DEFAULT 1"),
         ("pause_verify", "BOOLEAN DEFAULT 1"),
+        ("allow_public_search", "BOOLEAN DEFAULT 0"),
+        ("retention_days", "INTEGER"),
     ),
     "provider_usage": (
         ("scope", "VARCHAR(16)"),

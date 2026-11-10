@@ -212,6 +212,12 @@ def gate_reason(db: Session, provider: DiscoveryProvider, operation: str, *, now
     secret = db.get(DiscoveryProviderSecret, provider.name)
     if secret is None:
         return "credential missing"
+    try:
+        from backend.services.crypto import decrypt_value
+
+        decrypt_value(secret.ciphertext)
+    except Exception:
+        return "credential unreadable"
     price = (
         db.query(DiscoveryProviderPrice)
         .filter(DiscoveryProviderPrice.provider_name == provider.name, DiscoveryProviderPrice.operation == operation)

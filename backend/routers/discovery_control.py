@@ -504,6 +504,24 @@ def admin_person(person_id: int, admin: User = Depends(require_platform_admin), 
     return body
 
 
+@router.post("/people/{person_id}/retain")
+def retain_cached_person(person_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    from backend.services.discovery_engine.suppression import suppress_and_archive
+
+    row = suppress_and_archive(db, person_id, user_id=admin.id, reason="operator retention")
+    if row is None:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return _person_dict(row)
+
+
+@router.post("/retention/apply")
+def run_retention(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    from backend.services.discovery_engine.suppression import apply_retention
+
+    return {"archived": apply_retention(db), "compliance": "not_a_gdpr_deletion"}
+
+
 @router.post("/people/{person_id}/archive")
 def archive_cached_person(person_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
     del admin

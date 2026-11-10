@@ -40,6 +40,7 @@ TABLE_DOCS: dict[str, str] = {
     "discovery_runs": "One planned execution of a target. Cancelled runs are kept.",
     "discovery_stage_attempts": "What each pipeline stage did, including an honest skip.",
     "scheduler_locks": "Planner lease. Not the same lock as Postgres SKIP LOCKED queue claims.",
+    "worker_heartbeats": "Discovery or search worker heartbeat. Independent of the planner lease.",
     "domain_email_patterns": "Learned {first}.{last} style patterns per company domain.",
     "email_evidence": "Why Mark believes an email: public URL, provider, or pattern.",
     "email_verification_events": "Each verify attempt (local or provider).",

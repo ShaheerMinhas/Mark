@@ -60,16 +60,11 @@ def _cache_is_fresh(db: Session, target: DiscoveryTarget, now: datetime) -> bool
 
 
 def _public_hits(target: DiscoveryTarget) -> tuple[list, str]:
-    """The only place a live search could be called. The switch is hard-off."""
+    """Kept so older callers still cannot reach the legacy search client."""
+    del target
     if not LIVE_PUBLIC_SEARCH_ENABLED:
-        return [], "Live public search is off until a budget ledger exists"
-    from backend.services.discovery import runner as discovery_runner
-
-    # This import is the audited public search entry. It does not run while the
-    # constant above is false, which is the phase 2 default.
-    _ = discovery_runner.search_text
-    _ = target
-    return [], "Live public search is off"
+        return [], "Live public search is off. No request was sent."
+    return [], "Live public search is off. No request was sent."
 
 
 def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
@@ -100,11 +95,23 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
     elif _cache_is_fresh(db, target, now):
         discover_detail = "Matching cache rows are still fresh. No refresh was started."
         discover_status = "skipped_fresh"
-    else:
-        hits, discover_detail = _public_hits(target)
-        if hits:
-            raise RuntimeError("Phase 2 refuses to ingest live hits while search is hard-off")
+    elif not settings.allow_public_search:
+        discover_detail = "Live public search is off. No request was sent."
         discover_status = "skipped"
+    else:
+        from backend.services.discovery_engine.ingest import collect_public_hits, ingest_hits
+
+        hits, discover_detail = collect_public_hits(target)
+        if hits:
+            stats = ingest_hits(db, hits)
+            discover_status = "ingested"
+            discover_detail = (
+                f"Ingested {stats['ingested']} public people. "
+                f"{stats['duplicates']} were already cached. {stats['suppressed']} were suppressed. "
+                "Company research was not called."
+            )
+        else:
+            discover_status = "blocked"
 
     for stage in STAGES:
         db.refresh(run)

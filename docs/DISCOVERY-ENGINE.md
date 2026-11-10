@@ -117,9 +117,17 @@ Existing Hunter, Tomba, LeadMagic, Prospeo, and Findymail classes can be constru
 
 What this checkpoint does not prove: Postgres multi-worker reservation locking under load, DNS-rebinding protection for outbound URLs, a real provider invoice, or a currency conversion. SQLite coverage is two connections racing one conditional update. Current adapters do not return a currency amount, so a real call stays an unknown charge at the reserved maximum.
 
-### Phase 6 — production readiness
+### Phase 6 — production hardening
 
-Tenant and auth tests that try to cross workspaces. Performance of cache match. Restart recovery. Health, logs, and metrics. A worker process that is not the web server's background task. Admin browse with server-side filter, sort, page, and export. Evidence and dedup history. Archive or correct instead of bulk delete. Suppression at ingest and at serve. Retention and deletion. Secret handling. SSRF-safe fetches and robots rules. No CAPTCHA or login bypass. No claim of automatic GDPR compliance.
+Local PostgreSQL 16 was used for migration and race tests. No production database was contacted.
+
+What now works: a fresh Postgres database and a legacy database that already has a private lead both upgrade without copying that lead. Two Postgres sessions claim two queue rows with `FOR UPDATE SKIP LOCKED`. Two sessions cannot both reserve the last budget unit, and repeating the winning reservation key does not reserve again. Two sessions upserting the same profile end as one person; a conflicting identity key rolls back and retries instead of leaving an unkeyed row. A worker heartbeat is a separate table from the planner lease. `GET /api/health` reports the database and that heartbeat. Retention archives a shared person and suppresses the email, profile, and domain. It does not delete workspace leads and it is not a GDPR deletion. Customer routes stay on the owner. Operator cost, credentials, and export are rejected for ordinary users and workspace owners. New outbound fetches go through an address and redirect check. Logger lines redact secret-shaped values. A credential that cannot be decrypted is not used.
+
+There is no separate System Settings navigation. The switches that exist are on Providers: paid calls, the three pauses, public-search intent, and retention days. Phone numbers still require evidence. Unknown provider charges stay reserved at the maximum. Admin list, sort, export, correction, and archive were already backed by the database; export stays capped at 100 rows.
+
+What still does not discover on the network: saving “record public-search intent” does not call the legacy search clients. Those clients fetch arbitrary result URLs and are outside the outbound policy. The discover stage then records `blocked` and sends no request. A fixture source can still pass people through normalize, dedup, company association, evidence, and a customer search. Company research remains `unavailable`. Real provider HTTP, invoices, and DNS resolution of the public internet are not part of this checkpoint. The suite passing is not a production-ready claim.
+
+A 2,000-row country and title count on the local SQLite file is bounded by the test at under 5 seconds. That is a regression guard, not a throughput number.
 
 ## Acceptance checklist
 
@@ -138,8 +146,8 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] A covered search does not call live search. A short cache still does.
 - [x] Copied search leads do not gain CRM notes.
 - [x] Versioned migration runs on a legacy populated database and is idempotent.
-- [ ] Multi-threaded upsert under Postgres load. SQLite coverage is the single-process retry path.
-- [ ] Admin UI, scheduler, budgets, and suppression. Those are later phases.
+- [x] Two Postgres sessions upserting one profile finish as one person. This is not a load test.
+- [x] Admin UI, scheduler, budgets, and suppression exist. See the later checklists for what is still blocked.
 
 ### Phase 2
 
@@ -154,7 +162,7 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] Fresh cache rows are not refreshed.
 - [x] Overview says "Email lookup queued" when discovery is finished and the enrichment job is only queued.
 - [x] Paid enrichment has a budget ledger and stays off unless every gate passes. Live public search stays hard-off.
-- [ ] Postgres SKIP LOCKED is implemented for the job queue and is not what SQLite uses. Multi-worker SQLite is not a supported production lock.
+- [x] Two Postgres sessions claim two queue rows with SKIP LOCKED. Multi-worker SQLite is still not a supported production lock.
 
 ### Phase 3
 
@@ -183,13 +191,27 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] A fresh email field skips the call. Inferred is not verified or contactable. Suppression skips the call.
 - [x] Customer enrichment does not create a global reservation. Workspace environment keys are not a global credential.
 - [x] Usage separates estimated, actual, and unknown. An empty ledger is null, not zero. Cache health counts come from SQL.
-- [ ] A real provider HTTP call, invoice reconciliation, and DNS-rebinding checks. Those stay out of this checkpoint.
-- [ ] Postgres `SKIP LOCKED` under concurrent budget reservations. The tested race is SQLite's conditional update.
+- [ ] A real provider HTTP call and invoice reconciliation. Adapters still do not return a currency amount, so a real call would stay an unknown charge at the reserved maximum.
+- [x] Two Postgres sessions cannot both reserve the last budget unit. This is not a production load test.
 
 ### Phase 6
 
-- [ ] Cross-workspace tests fail closed.
-- [ ] Worker restart resumes leases.
-- [ ] Cache browse is filtered in SQL.
-- [ ] Suppression applies when writing and when serving.
-- [ ] Deployment docs describe a separate worker, not only the web process.
+These are the seventeen checks for this checkpoint.
+
+- [x] 1. Fresh local Postgres migration applies every schema version and leaves the shared cache empty.
+- [x] 2. Legacy local Postgres upgrade keeps the private lead and does not copy it into `global_people`.
+- [x] 3. Two Postgres workers claim different queue rows with `FOR UPDATE SKIP LOCKED`.
+- [x] 4. Postgres budget reservation is atomic, and the same idempotency key does not reserve twice.
+- [x] 5. Postgres profile upsert race ends as one person. A conflicting identity key retries instead of saving an unkeyed row.
+- [x] 6. Worker heartbeat is stored separately from the planner lease. Health reports `unknown` when no worker has written one.
+- [x] 7. Queue lease recovery and cancel-without-delete remain covered. A stopping heartbeat is distinct from a stale one.
+- [x] 8. A customer cannot read another customer's search, operator usage, provider configuration, or export.
+- [x] 9. Cache and operator list endpoints reject a page size above 100.
+- [x] 10. Retention archives and suppresses shared identities at the next ingest. Workspace leads stay. This is not GDPR compliance.
+- [x] 11. An unreadable credential fails closed. Re-encryption with the wrong old key does not replace the stored secret.
+- [x] 12. Log lines redact secret-shaped values.
+- [x] 13. New fetches check scheme, port, userinfo, and every resolved address and redirect. Legacy search and public-email fetchers do not use this guard.
+- [ ] 14. Configured live public discovery still sends no network request. The operator intent can be saved. The legacy search client is not cleared.
+- [x] 15. Fixture hits pass normalize, dedup, company, evidence, and into a customer search. A private source URL is dropped. A phone without evidence is dropped.
+- [x] 16. Company research stays `unavailable`.
+- [x] 17. Deployment notes describe separate web and worker processes, backup and restore, and the gates that stay off.

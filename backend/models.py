@@ -856,6 +856,8 @@ class DiscoverySettings(Base):
     pause_enrichment: Mapped[bool] = mapped_column(Boolean, default=True)
     pause_email: Mapped[bool] = mapped_column(Boolean, default=True)
     pause_verify: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_public_search: Mapped[bool] = mapped_column(Boolean, default=False)
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     max_runs_per_tick: Mapped[int] = mapped_column(Integer, default=5)
     max_runs_per_hour: Mapped[int] = mapped_column(Integer, default=4)
@@ -1066,6 +1068,17 @@ class GlobalFieldFreshness(Base):
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class WorkerHeartbeat(Base):
+    """Process heartbeat. This is not the planner lease."""
+
+    __tablename__ = "worker_heartbeats"
+
+    worker_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), default="discovery")
+    status: Mapped[str] = mapped_column(String(32), default="running")
+    beat_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class SchedulerLock(Base):

@@ -20,6 +20,8 @@ class SpendSettingsIn(BaseModel):
     pause_enrichment: bool = True
     pause_email: bool = True
     pause_verify: bool = True
+    allow_public_search: bool = False
+    retention_days: int | None = None
 
 
 class ProviderIn(BaseModel):
@@ -66,19 +68,28 @@ def _provider_out(db: Session, row: DiscoveryProvider) -> dict:
     }
 
 
-@router.get("/spend-settings")
-def get_spend_settings(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
-    del admin
-    row = ensure_settings(db)
-    db.commit()
+def _spend_out(row) -> dict:
     return {
         "paid_providers_enabled": bool(row.paid_providers_enabled),
         "pause_enrichment": bool(row.pause_enrichment),
         "pause_email": bool(row.pause_email),
         "pause_verify": bool(row.pause_verify),
-        "live_public_search": "disabled",
-        "detail": "Live public search stays off. These switches do not reveal credentials and do not start a run.",
+        "allow_public_search": bool(row.allow_public_search),
+        "retention_days": row.retention_days,
+        "live_public_search": "intent_on_network_blocked" if row.allow_public_search else "off",
+        "detail": (
+            "Allowing public search records the operator's intent. Network fetching stays blocked because "
+            "the legacy search clients are outside the outbound URL policy. Company research has no adapter."
+        ),
     }
+
+
+@router.get("/spend-settings")
+def get_spend_settings(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    row = ensure_settings(db)
+    db.commit()
+    return _spend_out(row)
 
 
 @router.patch("/spend-settings")
@@ -93,16 +104,13 @@ def patch_spend_settings(
     row.pause_enrichment = bool(body.pause_enrichment)
     row.pause_email = bool(body.pause_email)
     row.pause_verify = bool(body.pause_verify)
+    row.allow_public_search = bool(body.allow_public_search)
+    if body.retention_days is not None and not 1 <= int(body.retention_days) <= 3650:
+        raise HTTPException(status_code=400, detail="retention_days must be 1..3650 or omitted")
+    row.retention_days = body.retention_days
     row.live_public_search_enabled = False
     db.commit()
-    return {
-        "paid_providers_enabled": bool(row.paid_providers_enabled),
-        "pause_enrichment": bool(row.pause_enrichment),
-        "pause_email": bool(row.pause_email),
-        "pause_verify": bool(row.pause_verify),
-        "live_public_search": "disabled",
-        "detail": "Live public search stays off. These switches do not reveal credentials and do not start a run.",
-    }
+    return _spend_out(row)
 
 
 @router.get("/providers")

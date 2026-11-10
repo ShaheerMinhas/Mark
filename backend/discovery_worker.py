@@ -92,6 +92,9 @@ def handle_claimed(db, handle, *, jitter: float | None = None, heartbeat: bool =
 def poll_once(worker_id: str) -> bool:
     db = SessionLocal()
     try:
+        from backend.services.discovery_engine.heartbeat import beat
+
+        beat(db, worker_id, kind="discovery", status="running")
         queue.reclaim_expired(db)
         plan_due_targets(db, planner_id=worker_id)
         handle = claim_one(db, worker_id)
@@ -111,6 +114,15 @@ def main() -> None:
 
     def shutdown(*_: object) -> None:
         stop.set()
+        closing = SessionLocal()
+        try:
+            from backend.services.discovery_engine.heartbeat import beat
+
+            beat(closing, worker_id, kind="discovery", status="stopping")
+        except Exception:
+            closing.rollback()
+        finally:
+            closing.close()
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)

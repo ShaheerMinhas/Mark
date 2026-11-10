@@ -1125,6 +1125,20 @@ function Providers({ onError }) {
           <input type="checkbox" checked={Boolean(settings?.pause_verify)} onChange={(e) => setSettings({ ...settings, pause_verify: e.target.checked })} />
           Pause email verification
         </label>
+        <label className="inline-check">
+          <input type="checkbox" checked={Boolean(settings?.allow_public_search)} onChange={(e) => setSettings({ ...settings, allow_public_search: e.target.checked })} />
+          Record public-search intent
+        </label>
+        <label>Retention days
+          <input
+            type="number"
+            min="1"
+            aria-label="Retention days"
+            placeholder="Off"
+            value={settings?.retention_days ?? ""}
+            onChange={(e) => setSettings({ ...settings, retention_days: e.target.value === "" ? null : Number(e.target.value) })}
+          />
+        </label>
         <div className="people-toolbar">
           <button type="submit" className="btn-new-search">Save switches</button>
         </div>
