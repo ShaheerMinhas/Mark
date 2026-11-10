@@ -881,6 +881,7 @@ class DiscoveryTarget(Base):
     countries: Mapped[list] = mapped_column(JSON, default=list)
     industries: Mapped[list] = mapped_column(JSON, default=list)
     titles: Mapped[list] = mapped_column(JSON, default=list)
+    criteria: Mapped[dict] = mapped_column(JSON, default=dict)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -921,6 +922,34 @@ class DiscoveryStageAttempt(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DiscoveryCategory(Base):
+    """Editable label catalogue. A technology name is not a connected service."""
+
+    __tablename__ = "discovery_categories"
+    __table_args__ = (Index("uq_discovery_category", "kind", "normalized", unique=True),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(128))
+    normalized: Mapped[str] = mapped_column(String(128))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class DiscoveryFieldRule(Base):
+    """How a field is required. Enrichment source is stored and not applied yet."""
+
+    __tablename__ = "discovery_field_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    field_name: Mapped[str] = mapped_column(String(64), unique=True)
+    collection_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    requirement: Mapped[str] = mapped_column(String(16), default="optional")
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    refresh_hours: Mapped[int] = mapped_column(Integer, default=168)
+    enrichment_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verification_required: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class SchedulerLock(Base):

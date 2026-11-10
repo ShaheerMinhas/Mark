@@ -4,9 +4,16 @@ import { api, getToken } from "../api/client.js";
 const SECTIONS = [
   { id: "overview", label: "Overview" },
   { id: "engine", label: "Discovery engine" },
+  { id: "targeting", label: "Targeting" },
+  { id: "fields", label: "Field priorities" },
   { id: "leads", label: "Cached leads" },
   { id: "companies", label: "Cached companies" },
   { id: "jobs", label: "Discovery jobs" },
+];
+
+const COUNTRY_CODES = [
+  "US", "GB", "DE", "FR", "NL", "IE", "SE", "NO", "DK", "FI", "CH", "AT", "BE",
+  "ES", "IT", "PT", "PL", "CZ", "EE", "LT", "LV", "RO",
 ];
 
 function statusText(value) {
@@ -42,10 +49,12 @@ export default function AdminConsole() {
           </button>
         ))}
       </div>
-      <p className="meta">Targeting builder and budgets are not available in this version.</p>
+      <p className="meta">Budgets and provider spend are not available in this version. Enrichment sources are stored only and are not applied.</p>
       {error && <p className="error-msg">{error}</p>}
       {section === "overview" && <Overview onError={setError} />}
       {section === "engine" && <Engine onError={setError} />}
+      {section === "targeting" && <Targeting onError={setError} />}
+      {section === "fields" && <FieldPriorities onError={setError} />}
       {section === "leads" && <Leads onError={setError} />}
       {section === "companies" && <Companies onError={setError} />}
       {section === "jobs" && <Jobs onError={setError} />}
@@ -437,6 +446,545 @@ function Jobs({ onError }) {
           </>
         )}
       </aside>
+    </div>
+  );
+}
+
+function blankCriteria() {
+  return {
+    geography: { include_countries: [], exclude_countries: [], include_regions: [], include_cities: [], exclude_cities: [] },
+    industry: { include: [], exclude: [], include_sub: [], exclude_sub: [] },
+    titles: { exact: [], synonyms: [], exclude: [] },
+    functions: [],
+    seniorities: [],
+    departments: [],
+    company: { employee_min: null, employee_max: null, sizes: [], types: [] },
+    technologies: { mode: "optional", include: [] },
+  };
+}
+
+function formFromTarget(target) {
+  const criteria = target?.criteria || {};
+  const company = criteria.company || {};
+  return {
+    name: target?.name || "",
+    priority: target?.priority ?? 100,
+    schedule_type: target?.schedule_type || "weekdays",
+    timezone: target?.timezone || "UTC",
+    interval_minutes: target?.interval_minutes ?? 60,
+    hour: target?.hour ?? 7,
+    minute: target?.minute ?? 0,
+    max_people_per_run: target?.max_people_per_run ?? 25,
+    max_queries_per_run: target?.max_queries_per_run ?? 5,
+    refresh_hours: target?.refresh_hours ?? 168,
+    criteria: {
+      ...blankCriteria(),
+      ...criteria,
+      geography: { ...blankCriteria().geography, ...(criteria.geography || {}) },
+      industry: { ...blankCriteria().industry, ...(criteria.industry || {}) },
+      titles: { ...blankCriteria().titles, ...(criteria.titles || {}) },
+      company: {
+        employee_min: company.employee_min ?? "",
+        employee_max: company.employee_max ?? "",
+        sizes: company.sizes || [],
+        types: company.types || [],
+      },
+      technologies: { mode: "optional", include: [], ...(criteria.technologies || {}) },
+    },
+  };
+}
+
+function listText(values) {
+  return (values || []).join(", ");
+}
+
+function parseList(text) {
+  return String(text || "").split(",").map((part) => part.trim()).filter(Boolean);
+}
+
+function toggleValue(values, value) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function Targeting({ onError }) {
+  const [targets, setTargets] = useState([]);
+  const [catalogue, setCatalogue] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [form, setForm] = useState(null);
+  const [loaded, setLoaded] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryKind, setCategoryKind] = useState("industry");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [targetBody, catalogueBody] = await Promise.all([
+        api("/api/platform/discovery/targets"),
+        api("/api/platform/discovery/catalogue"),
+      ]);
+      const items = targetBody.items || [];
+      setTargets(items);
+      setCatalogue(catalogueBody.items || []);
+      setSelectedId((current) => current || items[0]?.id || null);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const target = targets.find((item) => item.id === selectedId);
+    if (!target) {
+      setForm(null);
+      setLoaded(null);
+      return;
+    }
+    const next = formFromTarget(target);
+    setForm(next);
+    setLoaded(next);
+  }, [selectedId, targets]);
+
+  useEffect(() => {
+    setNotice("");
+    setPreview(null);
+  }, [selectedId]);
+
+  function patchCriteria(group, key, value) {
+    setForm((current) => ({
+      ...current,
+      criteria: { ...current.criteria, [group]: { ...current.criteria[group], [key]: value } },
+    }));
+  }
+
+  function chips(kind) {
+    return catalogue.filter((item) => item.kind === kind);
+  }
+
+  async function save(event) {
+    event.preventDefault();
+    if (!form || !selectedId) return;
+    setSaving(true);
+    setNotice("");
+    const criteria = {
+      ...form.criteria,
+      titles: {
+        exact: parseList(form.criteria.titles.exactText ?? listText(form.criteria.titles.exact)),
+        synonyms: parseList(form.criteria.titles.synonymText ?? listText(form.criteria.titles.synonyms)),
+        exclude: parseList(form.criteria.titles.excludeText ?? listText(form.criteria.titles.exclude)),
+      },
+      geography: {
+        ...form.criteria.geography,
+        include_regions: parseList(form.criteria.geography.regionText ?? listText(form.criteria.geography.include_regions)),
+        include_cities: parseList(form.criteria.geography.cityText ?? listText(form.criteria.geography.include_cities)),
+        exclude_cities: parseList(form.criteria.geography.excludeCityText ?? listText(form.criteria.geography.exclude_cities)),
+      },
+      company: {
+        ...form.criteria.company,
+        employee_min: form.criteria.company.employee_min === "" ? null : Number(form.criteria.company.employee_min),
+        employee_max: form.criteria.company.employee_max === "" ? null : Number(form.criteria.company.employee_max),
+        sizes: parseList(form.criteria.company.sizeText ?? listText(form.criteria.company.sizes)),
+        types: parseList(form.criteria.company.typeText ?? listText(form.criteria.company.types)),
+      },
+    };
+    try {
+      const saved = await api(`/api/platform/discovery/targets/${selectedId}`, {
+        method: "PATCH",
+        body: {
+          name: form.name.trim(),
+          priority: Number(form.priority),
+          schedule_type: form.schedule_type,
+          timezone: form.timezone.trim(),
+          interval_minutes: form.interval_minutes === "" ? null : Number(form.interval_minutes),
+          hour: Number(form.hour),
+          minute: Number(form.minute),
+          max_people_per_run: Number(form.max_people_per_run),
+          max_queries_per_run: Number(form.max_queries_per_run),
+          refresh_hours: Number(form.refresh_hours),
+          criteria,
+        },
+      });
+      setNotice("Saved. The target stays in its current scheduling state.");
+      setTargets((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runPreview() {
+    if (!selectedId) return;
+    try {
+      setPreview(await api(`/api/platform/discovery/targets/${selectedId}/preview`, { method: "POST" }));
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  async function addCategory() {
+    if (!categoryName.trim()) return;
+    try {
+      await api("/api/platform/discovery/catalogue", {
+        method: "POST",
+        body: { kind: categoryKind, name: categoryName.trim() },
+      });
+      setCategoryName("");
+      const catalogueBody = await api("/api/platform/discovery/catalogue");
+      setCatalogue(catalogueBody.items || []);
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  if (loading) return <div className="empty">Loading targets…</div>;
+  if (!targets.length) return <div className="empty">No targets yet. Add a paused target from Discovery engine.</div>;
+  if (!form) return <div className="empty">Select a target.</div>;
+
+  const titles = form.criteria.titles;
+  const geo = form.criteria.geography;
+  const company = form.criteria.company;
+
+  return (
+    <form className="panel admin-note" onSubmit={save}>
+      <p>Saved rules are what the cache query uses. A missing optional value does not drop a person. People who fail a required field stay in the cache and are not eligible. Technology names are labels, not connections. This page does not start discovery.</p>
+      <label>Target
+        <select value={selectedId || ""} onChange={(e) => setSelectedId(Number(e.target.value))}>
+          {targets.map((target) => (
+            <option key={target.id} value={target.id}>{target.name} · {target.scheduling_status}</option>
+          ))}
+        </select>
+      </label>
+      <div className="people-toolbar">
+        <label className="target-name">Name
+          <input value={form.name} aria-label="Target name" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </label>
+        <label>Priority
+          <input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} />
+        </label>
+        <label>Schedule
+          <select value={form.schedule_type} onChange={(e) => setForm({ ...form, schedule_type: e.target.value })}>
+            <option value="hourly">Hourly</option>
+            <option value="interval">Interval</option>
+            <option value="daily">Daily</option>
+            <option value="weekdays">Weekdays</option>
+          </select>
+        </label>
+        <label>Timezone
+          <input value={form.timezone} aria-label="Timezone" onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+        </label>
+        <label>Interval minutes
+          <input type="number" min="15" value={form.interval_minutes ?? ""} onChange={(e) => setForm({ ...form, interval_minutes: e.target.value })} />
+        </label>
+        <label>Hour
+          <input type="number" min="0" max="23" value={form.hour} onChange={(e) => setForm({ ...form, hour: e.target.value })} />
+        </label>
+        <label>Minute
+          <input type="number" min="0" max="59" value={form.minute} onChange={(e) => setForm({ ...form, minute: e.target.value })} />
+        </label>
+        <label>People per run
+          <input type="number" min="1" max="500" value={form.max_people_per_run} onChange={(e) => setForm({ ...form, max_people_per_run: e.target.value })} />
+        </label>
+        <label>Queries per run
+          <input type="number" min="1" max="50" value={form.max_queries_per_run} onChange={(e) => setForm({ ...form, max_queries_per_run: e.target.value })} />
+        </label>
+        <label>Refresh hours
+          <input type="number" min="1" value={form.refresh_hours} onChange={(e) => setForm({ ...form, refresh_hours: e.target.value })} />
+        </label>
+      </div>
+      <h3>Countries to include</h3>
+      <div className="people-chips">
+        {COUNTRY_CODES.map((code) => (
+          <button
+            key={`in-${code}`}
+            type="button"
+            className={`people-chip ${geo.include_countries.includes(code) ? "is-on" : ""}`}
+            onClick={() => patchCriteria("geography", "include_countries", toggleValue(geo.include_countries, code))}
+          >{code}</button>
+        ))}
+      </div>
+      <h3>Countries to exclude</h3>
+      <div className="people-chips">
+        {COUNTRY_CODES.map((code) => (
+          <button
+            key={`ex-${code}`}
+            type="button"
+            className={`people-chip ${geo.exclude_countries.includes(code) ? "is-on" : ""}`}
+            onClick={() => patchCriteria("geography", "exclude_countries", toggleValue(geo.exclude_countries, code))}
+          >{code}</button>
+        ))}
+      </div>
+      <div className="people-toolbar">
+        <label>States
+          <input
+            aria-label="States"
+            value={geo.regionText ?? listText(geo.include_regions)}
+            onChange={(e) => patchCriteria("geography", "regionText", e.target.value)}
+          />
+        </label>
+        <label>Cities to include
+          <input
+            aria-label="Cities to include"
+            value={geo.cityText ?? listText(geo.include_cities)}
+            onChange={(e) => patchCriteria("geography", "cityText", e.target.value)}
+          />
+        </label>
+        <label>Cities to exclude
+          <input
+            aria-label="Cities to exclude"
+            value={geo.excludeCityText ?? listText(geo.exclude_cities)}
+            onChange={(e) => patchCriteria("geography", "excludeCityText", e.target.value)}
+          />
+        </label>
+      </div>
+      <h3>Industries</h3>
+      <div className="people-chips">
+        {chips("industry").map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`people-chip ${form.criteria.industry.include.includes(item.normalized) ? "is-on" : ""}`}
+            onClick={() => patchCriteria("industry", "include", toggleValue(form.criteria.industry.include, item.normalized))}
+          >{item.name}</button>
+        ))}
+      </div>
+      <h3>Industries to exclude</h3>
+      <div className="people-chips">
+        {chips("industry").map((item) => (
+          <button
+            key={`out-${item.id}`}
+            type="button"
+            className={`people-chip ${form.criteria.industry.exclude.includes(item.normalized) ? "is-on" : ""}`}
+            onClick={() => patchCriteria("industry", "exclude", toggleValue(form.criteria.industry.exclude, item.normalized))}
+          >{item.name}</button>
+        ))}
+      </div>
+      <h3>Subindustries</h3>
+      <div className="people-chips">
+        {chips("subindustry").map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`people-chip ${form.criteria.industry.include_sub.includes(item.normalized) ? "is-on" : ""}`}
+            onClick={() => patchCriteria("industry", "include_sub", toggleValue(form.criteria.industry.include_sub, item.normalized))}
+          >{item.name}</button>
+        ))}
+      </div>
+      <h3>Titles</h3>
+      <div className="people-toolbar">
+        <label>Exact titles
+          <input aria-label="Exact titles" value={titles.exactText ?? listText(titles.exact)} onChange={(e) => patchCriteria("titles", "exactText", e.target.value)} />
+        </label>
+        <label>Synonyms
+          <input aria-label="Title synonyms" value={titles.synonymText ?? listText(titles.synonyms)} onChange={(e) => patchCriteria("titles", "synonymText", e.target.value)} />
+        </label>
+        <label>Excluded titles
+          <input aria-label="Excluded titles" value={titles.excludeText ?? listText(titles.exclude)} onChange={(e) => patchCriteria("titles", "excludeText", e.target.value)} />
+        </label>
+      </div>
+      <h3>Function, seniority, department</h3>
+      {["function", "seniority", "department"].map((kind) => (
+        <div key={kind}>
+          <p className="meta">{kind}</p>
+          <div className="people-chips">
+            {chips(kind).map((item) => {
+              const key = kind === "function" ? "functions" : kind === "seniority" ? "seniorities" : "departments";
+              const selected = form.criteria[key] || [];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`people-chip ${selected.includes(item.normalized) ? "is-on" : ""}`}
+                  onClick={() => setForm((current) => ({
+                    ...current,
+                    criteria: { ...current.criteria, [key]: toggleValue(selected, item.normalized) },
+                  }))}
+                >{item.name}</button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <h3>Company</h3>
+      <div className="people-toolbar">
+        <label>Employees min
+          <input type="number" min="0" aria-label="Employees min" value={company.employee_min} onChange={(e) => patchCriteria("company", "employee_min", e.target.value)} />
+        </label>
+        <label>Employees max
+          <input type="number" min="0" aria-label="Employees max" value={company.employee_max} onChange={(e) => patchCriteria("company", "employee_max", e.target.value)} />
+        </label>
+        <label>Size labels
+          <input aria-label="Size labels" value={company.sizeText ?? listText(company.sizes)} onChange={(e) => patchCriteria("company", "sizeText", e.target.value)} />
+        </label>
+        <label>Company types
+          <input aria-label="Company types" value={company.typeText ?? listText(company.types)} onChange={(e) => patchCriteria("company", "typeText", e.target.value)} />
+        </label>
+      </div>
+      <h3>Technology labels</h3>
+      <label>Match
+        <select
+          value={form.criteria.technologies.mode}
+          onChange={(e) => patchCriteria("technologies", "mode", e.target.value)}
+        >
+          <option value="optional">Optional — a person with no technology label still matches</option>
+          <option value="required">Required — a listed label must be present</option>
+        </select>
+      </label>
+      <div className="people-chips">
+        {chips("technology").map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`people-chip ${form.criteria.technologies.include.includes(item.normalized) ? "is-on" : ""}`}
+            onClick={() => patchCriteria("technologies", "include", toggleValue(form.criteria.technologies.include, item.normalized))}
+          >{item.name}</button>
+        ))}
+      </div>
+      <div className="people-toolbar">
+        <label>Catalogue
+          <select value={categoryKind} onChange={(e) => setCategoryKind(e.target.value)}>
+            <option value="industry">Industry</option>
+            <option value="subindustry">Subindustry</option>
+            <option value="technology">Technology label</option>
+            <option value="function">Function</option>
+            <option value="seniority">Seniority</option>
+            <option value="department">Department</option>
+          </select>
+        </label>
+        <label>New label
+          <input aria-label="New catalogue label" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+        </label>
+        <button type="button" className="ghost" onClick={addCategory}>Add label</button>
+      </div>
+      <div className="people-toolbar">
+        <button type="submit" className="btn-new-search" disabled={saving}>{saving ? "Saving…" : "Save target"}</button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => { setForm(loaded); setNotice(""); setPreview(null); }}
+        >Reset</button>
+        <button type="button" className="ghost" onClick={runPreview}>Preview matches</button>
+      </div>
+      {notice && <p className="meta">{notice}</p>}
+      {preview && (
+        <p className="meta">
+          {preview.eligible} eligible. {preview.preferred_complete} of those meet preferred fields. {preview.detail} Enrichment: {preview.enrichment}.
+        </p>
+      )}
+    </form>
+  );
+}
+
+function FieldPriorities({ onError }) {
+  const [items, setItems] = useState([]);
+  const [detail, setDetail] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const body = await api("/api/platform/discovery/fields");
+      setItems(body.items || []);
+      setDetail(body.detail || "");
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function update(name, key, value) {
+    setItems((current) => current.map((item) => (item.field_name === name ? { ...item, [key]: value } : item)));
+  }
+
+  async function save(item) {
+    setNotice("");
+    try {
+      await api(`/api/platform/discovery/fields/${item.field_name}`, {
+        method: "PATCH",
+        body: {
+          collection_enabled: item.collection_enabled,
+          requirement: item.requirement,
+          priority: Number(item.priority),
+          refresh_hours: Number(item.refresh_hours),
+          verification_required: item.verification_required,
+        },
+      });
+      setNotice(`Saved ${item.field_name}. Enrichment is still unavailable.`);
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
+  if (loading) return <div className="empty">Loading field rules…</div>;
+  if (!items.length) return <div className="empty">No field rules have been saved.</div>;
+  return (
+    <div className="panel admin-note">
+      <p>{detail}</p>
+      <div className="people-table-wrap">
+        <table className="people-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Collection</th>
+              <th>Requirement</th>
+              <th>Priority</th>
+              <th>Refresh hours</th>
+              <th>Verification</th>
+              <th>Enrichment source</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.field_name}>
+                <td>{item.field_name}</td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`${item.field_name} collection`}
+                    checked={item.collection_enabled}
+                    onChange={(e) => update(item.field_name, "collection_enabled", e.target.checked)}
+                  />
+                </td>
+                <td>
+                  <select aria-label={`${item.field_name} requirement`} value={item.requirement} onChange={(e) => update(item.field_name, "requirement", e.target.value)}>
+                    <option value="required">Required</option>
+                    <option value="preferred">Preferred</option>
+                    <option value="optional">Optional</option>
+                  </select>
+                </td>
+                <td><input type="number" aria-label={`${item.field_name} priority`} value={item.priority} onChange={(e) => update(item.field_name, "priority", e.target.value)} /></td>
+                <td><input type="number" aria-label={`${item.field_name} refresh`} value={item.refresh_hours} onChange={(e) => update(item.field_name, "refresh_hours", e.target.value)} /></td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`${item.field_name} verification`}
+                    checked={item.verification_required}
+                    onChange={(e) => update(item.field_name, "verification_required", e.target.checked)}
+                  />
+                </td>
+                <td>Unavailable</td>
+                <td><button type="button" className="ghost" onClick={() => save(item)}>Save</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="people-toolbar">
+        <button type="button" className="ghost" onClick={() => { setNotice(""); load(); }}>Reset</button>
+      </div>
+      {notice && <p className="meta">{notice}</p>}
+      <p className="meta">Turning collection off stops that field from filtering. Evidence, identity keys, and suppression stay. A required field changes eligibility. It does not delete the person.</p>
     </div>
   );
 }

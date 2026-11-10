@@ -281,6 +281,9 @@
 .notice.is-ok { color: var(--good); }
 
 .admin-note p { margin: 0.25rem 0; }
+.admin-note .target-name { flex: 1 1 22rem; }
+.admin-note label input,
+.admin-note label select { width: 100%; }
 .admin-note label { display: grid; gap: 0.25rem; font-size: 0.78rem; color: var(--ink-soft); }
 .admin-note input[type="number"] { width: 5.5rem; }
 
@@ -349,9 +352,10 @@
 }
 
 .people-chip.is-on {
-  background: #eef2ff;
-  border-color: #c7d2fe;
+  background: #e0e7ff;
+  border-color: #6366f1;
   color: #312e81;
+  font-weight: 600;
 }
 
 .people-count {

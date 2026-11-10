@@ -32,8 +32,8 @@ def validate_timezone(name: str) -> str:
 
 def next_run_at(target: DiscoveryTarget, after_utc: datetime) -> datetime:
     """Next slot as naive UTC. Daily and weekday times are interpreted in the target timezone."""
-    if target.schedule_type == "interval":
-        minutes = max(MIN_INTERVAL_MINUTES, int(target.interval_minutes or 60))
+    if target.schedule_type in {"interval", "hourly"}:
+        minutes = 60 if target.schedule_type == "hourly" else max(MIN_INTERVAL_MINUTES, int(target.interval_minutes or 60))
         return after_utc + timedelta(minutes=minutes)
     tz = ZoneInfo(target.timezone or "UTC")
     local = after_utc.replace(tzinfo=timezone.utc).astimezone(tz)

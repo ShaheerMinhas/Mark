@@ -132,7 +132,33 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
         if stage == "discover":
             _record(db, run, stage, discover_status, discover_detail, attempt)
             continue
-        _record(db, run, stage, "skipped", "No new public hits to process", attempt)
+        if stage == "validate":
+            from backend.services.discovery_engine.targeting import apply_criteria, field_rules, preferred_as_required
+            from backend.services.discovery_engine.suppression import suppressed_people_filter
+
+            rules = field_rules(db)
+            criteria = dict(target.criteria or {})
+
+            def base():
+                return suppressed_people_filter(db, db.query(GlobalPerson).filter(GlobalPerson.archived_at.is_(None)))
+
+            eligible = apply_criteria(db, base(), criteria, rules).count()
+            preferred = apply_criteria(db, base(), criteria, preferred_as_required(rules)).count()
+            total = db.query(GlobalPerson).filter(GlobalPerson.archived_at.is_(None)).count()
+            _record(
+                db,
+                run,
+                stage,
+                "classified",
+                (
+                    f"{eligible} cached people match required fields. {preferred} also meet preferred fields. "
+                    f"{total - eligible} do not match. Non-matching rows were not deleted. "
+                    "Enrichment sources are not applied."
+                ),
+                attempt,
+            )
+            continue
+        _record(db, run, stage, "skipped", "No new public hits to process. Enrichment sources are not applied.", attempt)
 
     run.status = "succeeded"
     run.error = None

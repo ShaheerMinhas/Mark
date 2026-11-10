@@ -86,9 +86,30 @@ def _step_scheduler(bind) -> None:
         session.close()
 
 
+def _step_targeting(bind) -> None:
+    """Catalogue, field rules, and one paused preset. No people are created."""
+    Base.metadata.create_all(
+        bind=bind,
+        tables=[
+            Base.metadata.tables[name]
+            for name in ("discovery_categories", "discovery_field_rules")
+            if name in Base.metadata.tables
+        ],
+    )
+    from backend.services.discovery_engine.targeting import seed_defaults
+
+    session = Session(bind=bind)
+    try:
+        seed_defaults(session)
+        session.commit()
+    finally:
+        session.close()
+
+
 STEPS: tuple[tuple[int, str, object], ...] = (
     (1, "global_discovery_cache", _step_cache_tables),
     (2, "discovery_scheduler", _step_scheduler),
+    (3, "targeting_rules", _step_targeting),
 )
 
 

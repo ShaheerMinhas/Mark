@@ -68,6 +68,7 @@ _ADDED_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("archived_at", "DATETIME"),
         ("correction_note", "TEXT"),
     ),
+    "discovery_targets": (("criteria", "JSON"),),
     "search_jobs": (
         ("progress", "INTEGER DEFAULT 0"),
         ("current_stage", "VARCHAR(64)"),

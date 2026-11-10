@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.dependencies import require_platform_admin
-from backend.models import DiscoveryRun, DiscoveryTarget, User
+from backend.models import DiscoveryCategory, DiscoveryFieldRule, DiscoveryRun, DiscoveryTarget, GlobalPerson, User
 from backend.services.discovery_engine.admin_read import (
     archive_company,
     archive_person,
@@ -28,6 +28,7 @@ from backend.services.discovery_engine.admin_read import (
     _run_dict,
 )
 from backend.services.discovery_engine.schedule import enqueue_run_now, validate_timezone
+from backend.services.discovery_engine.targeting import apply_criteria, field_rules, preferred_as_required, validate_criteria
 from backend.services.discovery_engine.settings import ensure_settings, update_limits
 from backend.services.discovery_engine.suppression import add_suppression
 
@@ -48,6 +49,7 @@ class TargetIn(BaseModel):
     countries: list[str] = Field(default_factory=list)
     industries: list[str] = Field(default_factory=list)
     titles: list[str] = Field(default_factory=list)
+    criteria: dict | None = None
 
 
 class SuppressionIn(BaseModel):
@@ -57,8 +59,8 @@ class SuppressionIn(BaseModel):
 
 
 def _check_target(body: TargetIn) -> None:
-    if body.schedule_type not in {"interval", "daily", "weekdays"}:
-        raise HTTPException(status_code=400, detail="schedule_type must be interval, daily, or weekdays")
+    if body.schedule_type not in {"interval", "hourly", "daily", "weekdays"}:
+        raise HTTPException(status_code=400, detail="schedule_type must be interval, hourly, daily, or weekdays")
     try:
         validate_timezone(body.timezone)
     except ValueError as exc:
@@ -71,6 +73,8 @@ def _check_target(body: TargetIn) -> None:
         raise HTTPException(status_code=400, detail="max_people_per_run must be 1..500")
     if not 1 <= body.max_queries_per_run <= 50:
         raise HTTPException(status_code=400, detail="max_queries_per_run must be 1..50")
+    if not 1 <= body.refresh_hours <= 24 * 90:
+        raise HTTPException(status_code=400, detail="refresh_hours is out of range")
 
 
 def _target_out(row: DiscoveryTarget) -> dict:
@@ -90,6 +94,7 @@ def _target_out(row: DiscoveryTarget) -> dict:
         "countries": row.countries or [],
         "industries": row.industries or [],
         "titles": row.titles or [],
+        "criteria": row.criteria or {},
         "next_run_at": row.next_run_at,
     }
 
@@ -102,6 +107,12 @@ def create_target(
 ):
     del admin
     _check_target(body)
+    criteria = {}
+    if body.criteria:
+        try:
+            criteria = validate_criteria(db, body.criteria)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     row = DiscoveryTarget(
         name=body.name.strip(),
         priority=body.priority,
@@ -114,9 +125,10 @@ def create_target(
         max_people_per_run=body.max_people_per_run,
         max_queries_per_run=body.max_queries_per_run,
         refresh_hours=body.refresh_hours,
-        countries=body.countries,
-        industries=body.industries,
-        titles=body.titles,
+        countries=(criteria.get("geography") or {}).get("include_countries") or body.countries,
+        industries=(criteria.get("industry") or {}).get("include") or body.industries,
+        titles=(criteria.get("titles") or {}).get("exact") or body.titles,
+        criteria=criteria,
         next_run_at=None,
     )
     db.add(row)
@@ -136,6 +148,165 @@ def _set_scheduling(db: Session, target_id: int, status: str) -> dict:
     db.commit()
     db.refresh(row)
     return _target_out(row)
+
+
+class FieldRuleIn(BaseModel):
+    collection_enabled: bool = True
+    requirement: str = "optional"
+    priority: int = 100
+    refresh_hours: int = 168
+    verification_required: bool = False
+
+
+class CategoryIn(BaseModel):
+    kind: str
+    name: str
+
+
+@router.patch("/targets/{target_id}")
+def update_target(
+    target_id: int,
+    body: TargetIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    row = db.get(DiscoveryTarget, target_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Target not found")
+    _check_target(body)
+    try:
+        criteria = validate_criteria(db, body.criteria or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row.name = body.name.strip()
+    row.priority = body.priority
+    row.schedule_type = body.schedule_type
+    row.timezone = body.timezone
+    row.interval_minutes = body.interval_minutes
+    row.hour = body.hour
+    row.minute = body.minute
+    row.max_people_per_run = body.max_people_per_run
+    row.max_queries_per_run = body.max_queries_per_run
+    row.refresh_hours = body.refresh_hours
+    row.countries = criteria["geography"]["include_countries"] or body.countries
+    row.industries = criteria["industry"]["include"] or body.industries
+    row.titles = criteria["titles"]["exact"] or body.titles
+    row.criteria = criteria
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _target_out(row)
+
+
+@router.post("/targets/{target_id}/preview")
+def preview_target(target_id: int, admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    row = db.get(DiscoveryTarget, target_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Target not found")
+    from backend.services.discovery_engine.suppression import suppressed_people_filter
+
+    rules = field_rules(db)
+    def base():
+        return suppressed_people_filter(db, db.query(GlobalPerson).filter(GlobalPerson.archived_at.is_(None)))
+
+    criteria = dict(row.criteria or {})
+    eligible = apply_criteria(db, base(), criteria, rules).count()
+    preferred = apply_criteria(db, base(), criteria, preferred_as_required(rules)).count()
+    return {
+        "eligible": eligible,
+        "preferred_complete": preferred,
+        "detail": "Eligible means required fields match. A missing optional field stays eligible. Rows that do not match are left in the cache.",
+        "enrichment": "unavailable",
+    }
+
+
+@router.get("/catalogue")
+def list_catalogue(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    rows = db.query(DiscoveryCategory).filter(DiscoveryCategory.active.is_(True)).order_by(DiscoveryCategory.kind, DiscoveryCategory.name).all()
+    return {
+        "items": [
+            {"id": row.id, "kind": row.kind, "name": row.name, "normalized": row.normalized}
+            for row in rows
+        ]
+    }
+
+
+@router.post("/catalogue")
+def add_catalogue(
+    body: CategoryIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    if body.kind not in {"industry", "subindustry", "technology", "function", "seniority", "department"}:
+        raise HTTPException(status_code=400, detail="Unsupported catalogue kind")
+    from backend.services.identity import normalize_name
+
+    normalized = normalize_name(body.name)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Category name is empty")
+    existing = (
+        db.query(DiscoveryCategory)
+        .filter(DiscoveryCategory.kind == body.kind, DiscoveryCategory.normalized == normalized)
+        .one_or_none()
+    )
+    if existing is None:
+        existing = DiscoveryCategory(kind=body.kind, name=body.name.strip(), normalized=normalized, active=True)
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+    return {"id": existing.id, "kind": existing.kind, "name": existing.name}
+
+
+@router.get("/fields")
+def list_fields(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    rows = db.query(DiscoveryFieldRule).order_by(DiscoveryFieldRule.priority.asc()).all()
+    return {
+        "enrichment_application": "unavailable",
+        "detail": "Collection and required/preferred/optional are used when matching. Enrichment source and verification are stored for Phase 5 and are not applied.",
+        "items": [
+            {
+                "field_name": row.field_name,
+                "collection_enabled": row.collection_enabled,
+                "requirement": row.requirement,
+                "priority": row.priority,
+                "refresh_hours": row.refresh_hours,
+                "verification_required": row.verification_required,
+                "enrichment_source": None,
+                "enrichment_source_status": "unavailable",
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.patch("/fields/{field_name}")
+def update_field(
+    field_name: str,
+    body: FieldRuleIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    if body.requirement not in {"required", "preferred", "optional"}:
+        raise HTTPException(status_code=400, detail="requirement must be required, preferred, or optional")
+    if not 1 <= body.refresh_hours <= 24 * 90:
+        raise HTTPException(status_code=400, detail="refresh_hours is out of range")
+    row = db.query(DiscoveryFieldRule).filter(DiscoveryFieldRule.field_name == field_name).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Unknown field")
+    row.collection_enabled = body.collection_enabled
+    row.requirement = body.requirement
+    row.priority = body.priority
+    row.refresh_hours = body.refresh_hours
+    row.verification_required = body.verification_required
+    row.enrichment_source = None
+    db.commit()
+    return {"field_name": row.field_name, "requirement": row.requirement, "enrichment_source_status": "unavailable"}
 
 
 @router.post("/targets/{target_id}/start")

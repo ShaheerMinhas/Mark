@@ -93,15 +93,19 @@ Suppression is checked on cache write and on cache serve. Deleting a workspace l
 
 Implemented for a platform operator only: Overview, Discovery engine, Cached leads, Cached companies, and Discovery jobs. Counts and groupings are SQL aggregates. Estimated cost is `unavailable`. Worker state is the planner lease, or `unknown` when no worker has written one. Ordinary users and workspace owners get 403. The customer navigation does not show the console unless `is_platform_admin` is true, and the APIs still reject everyone else.
 
-Targeting builder, field priorities, provider management, usage costs, and cache health are not pages. The console says they are not available. Archive sets `archived_at` and keeps evidence. Corrections keep the previous value as evidence. CSV export is admin-only and prefixes formula characters.
+Archive sets `archived_at` and keeps evidence. Corrections keep the previous value as evidence. CSV export is admin-only and prefixes formula characters. Provider management, usage costs, and cache health are not pages.
 
 Scheduling can be saved as enabled. Live search and paid calls remain hard-off, so a run-now job records skipped stages. Pause does not delete queued runs.
 
 ### Phase 4 — targeting
 
-Saved target configs, each with priority, schedule, and limits. Include and exclude geography, industry, subindustry, titles, synonyms, exclusions, function, seniority, department, employee min/max, company type, and optional technology labels (AWS, Azure, GCP, Salesforce, HubSpot, Shopify, React, Angular, Kubernetes, Docker, Postgres, Mongo are values, not integrations). Required, preferred, and optional fields. A missing optional field does not drop a good prospect. Schedules: daily, hourly, weekdays, timezone, interval. No hardcoded industry service.
+Implemented. Each target stores structured criteria: ISO country include and exclude, state and city include or exclude, industry and subindustry include and exclude, title exact values, synonyms, and exclusions, function, seniority, department, employee min and max, size, company type, and technology labels. Technology names are catalogue values. They do not connect a cloud or a plugin. Title matching is normalized equality against the exact list plus synonyms. An excluded title is removed by equality, not by a substring search.
 
-Initial defaults, when that phase is built: United States (states and territories the providers actually support) and these countries individually, not as one EU blob: GB, DE, FR, NL, IE, SE, NO, DK, FI, CH, AT, BE, ES, IT, PT, PL, CZ, EE, LT, LV, RO. Industries: Software, SaaS, AI/ML, cloud, cybersecurity, FinTech, HealthTech, EdTech, analytics, IT services, dev tools, enterprise software, internet/ecommerce technology, robotics, telecom. Functions: engineering, management, IT, product, data/AI, security, DevOps/cloud, sales/BD, marketing, operations. Titles such as CTO, CIO, CEO, founder, VP, director, manager, engineer, developer, product, head of IT, and head of sales are editable, with synonyms and exclusions.
+A paused preset named “US and Europe technology leaders” is seeded with the United States and GB, DE, FR, NL, IE, SE, NO, DK, FI, CH, AT, BE, ES, IT, PT, PL, CZ, EE, LT, LV, RO as separate countries, plus the technology industry, function, and title labels from the brief. It has no next run and it does not create people. Discovery stays off.
+
+Field rules store collection, required / preferred / optional, priority, refresh hours, and a verification flag. Required fields decide eligibility. Preferred fields change the stricter count only. A missing optional field, including a person with no technology rows when technology is optional, stays eligible. People who do not match are left in the cache. Unknown values stay null. An inferred email is not marked verified or contactable. Evidence, identity keys, and suppression still apply when collection for a field is off. Enrichment source is not applied; the API reports it as unavailable.
+
+The validate stage counts eligible and preferred-complete cached people with the same SQL. It does not call a provider and it does not delete rows. Customer cache search is unchanged.
 
 ### Phase 5 — enrichment budgets
 
@@ -153,13 +157,17 @@ Tenant and auth tests that try to cross workspaces. Performance of cache match. 
 - [x] A customer or workspace owner is rejected by the API.
 - [x] Cost is reported as unavailable. Worker state is unknown without a persisted lease.
 - [x] Archive and CSV export do not delete evidence. CSV formula characters are prefixed.
-- [ ] Targeting builder, budgets, and the rest of the operator navigation. Those stay unavailable on purpose.
+- [x] Targeting and field priorities are operator pages backed by the database.
+- [ ] Budgets, provider spend, and enrichment execution. Those stay unavailable on purpose.
 
 ### Phase 4
 
-- [ ] Several saved targets, each with its own schedule and limits.
-- [ ] Include and exclude rules, synonyms, and optional technologies.
-- [ ] Optional blanks do not discard a prospect that meets required fields.
+- [x] Several saved targets, each with its own schedule, timezone, and limits. Invalid schedules and bounds are rejected.
+- [x] Include and exclude rules, title synonyms and exclusions, and optional technology labels.
+- [x] A missing optional field does not discard a prospect. A missing required field is ineligible and the row remains.
+- [x] The paused US and Europe technology preset does not create people and is not due.
+- [x] Ordinary users and workspace owners receive 403. Criteria survive a new database session.
+- [ ] Enrichment sources and verification. Stored only, reported unavailable, until Phase 5.
 
 ### Phase 5
 
