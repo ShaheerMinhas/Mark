@@ -706,16 +706,52 @@ h2 {
 }
 
 .search-progress-stage {
-  margin: 0;
-  font-size: 0.88rem;
-  color: rgba(244, 250, 247, 0.86);
+  margin: 0.85rem 0 0;
+  font-size: 0.92rem;
+  color: rgba(244, 250, 247, 0.92);
+}
+
+.search-progress-email {
+  margin: 0.35rem 0 0;
+  font-size: 0.84rem;
+  color: #ffb347;
+}
+
+.search-progress.is-settled {
+  background:
+    radial-gradient(90% 70% at 100% -20%, rgba(232, 93, 4, 0.18), transparent 58%),
+    linear-gradient(165deg, #16312b 0%, #1c3b33 58%, #12241f 100%);
+}
+
+.search-progress.is-failed {
+  background: linear-gradient(165deg, #2a1614 0%, #3a1d1a 58%, #1a1010 100%);
+}
+
+.search-progress.is-stopped {
+  background: linear-gradient(165deg, #2a2416 0%, #3a321c 58%, #1a160f 100%);
+}
+
+.search-progress.is-settled .search-progress-fill::after,
+.search-progress.is-failed .search-progress-fill::after,
+.search-progress.is-stopped .search-progress-fill::after {
+  animation: none;
+  opacity: 0;
+}
+
+.search-progress-track.is-indeterminate .search-progress-fill {
+  width: 38%;
+  animation: search-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes search-indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
 }
 
 .search-progress-found {
-  margin: 0;
-  flex-shrink: 0;
-  font-size: 0.82rem;
-  color: #9ee0c6;
+  margin: 0.8rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(158, 224, 198, 0.9);
 }
 
 .search-progress-phases {
@@ -744,6 +780,36 @@ h2 {
 .search-progress-phases li.is-done {
   color: #9ee0c6;
   border-color: rgba(158, 224, 198, 0.4);
+}
+
+.search-progress-phases li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.search-progress-phases li small {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.search-progress-phases li.is-waiting,
+.search-progress-phases li.is-pending,
+.search-progress-phases li.is-off {
+  color: rgba(244, 250, 247, 0.72);
+}
+
+.search-progress-phases li.is-skipped,
+.search-progress-phases li.is-stopped,
+.search-progress-phases li.is-cancelled {
+  color: #ffd7a1;
+  border-color: rgba(255, 179, 71, 0.45);
+}
+
+.search-progress-phases li.is-failed {
+  color: #ffb4a8;
+  border-color: rgba(255, 140, 120, 0.5);
 }
 
 @media (max-width: 720px) {

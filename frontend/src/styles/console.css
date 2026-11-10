@@ -204,6 +204,70 @@
   letter-spacing: -0.03em;
 }
 
+.people-filters { margin: 0.2rem 0 0.9rem; }
+
+.people-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+
+.people-reset { margin-left: auto; }
+
+.people-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.people-chip span {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.people-chip.is-on {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #312e81;
+}
+
+.people-count {
+  margin: 0.55rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.people-empty {
+  padding: 1.25rem 0.4rem;
+  text-align: center;
+}
+
+.people-empty p { margin: 0 0 0.6rem; }
+
+.people-sort {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.people-toolbar .inline-check { white-space: nowrap; }
+
 .people-toolbar, .crm-toolbar {
   display: flex;
   gap: 0.6rem;

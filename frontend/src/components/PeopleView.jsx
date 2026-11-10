@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
+import { emailPresenceLabel, storedEmailStatusLabel } from "../emailPresence.js";
 
 const STAGES = [
   { id: "", label: "All statuses" },
@@ -15,20 +16,34 @@ const STAGES = [
 ];
 
 const EMAIL_FILTERS = [
-  { id: "", label: "Any email" },
-  { id: "has_email", label: "Has email" },
-  { id: "verified", label: "Verified" },
-  { id: "found", label: "Found" },
-  { id: "inferred", label: "Inferred" },
-  { id: "missing", label: "Missing email" },
+  { id: "", label: "All", countKey: "all" },
+  { id: "with_email", label: "With email", countKey: "with_email" },
+  { id: "without_email", label: "Without email", countKey: "without_email" },
+  { id: "not_searched", label: "Not looked up", countKey: "not_searched" },
+  { id: "no_email_found", label: "Looked up, no email", countKey: "no_email_found" },
 ];
 
 const SORTS = [
   { id: "recent", label: "Newest first" },
-  { id: "relevance", label: "Relevance score" },
+  { id: "relevance", label: "Relevance" },
   { id: "name", label: "Name (A–Z)" },
   { id: "company", label: "Company (A–Z)" },
-  { id: "priority", label: "Priority" },
+  { id: "title", label: "Title (A–Z)" },
+  { id: "priority", label: "Priority (high first)" },
+  { id: "email", label: "With email first" },
+];
+
+const PRIORITIES = [
+  { id: "", label: "Any priority" },
+  { id: "high", label: "High priority" },
+  { id: "medium", label: "Medium priority" },
+  { id: "low", label: "Low priority" },
+];
+
+const PHONE_FILTERS = [
+  { id: "", label: "Any phone" },
+  { id: "yes", label: "Has phone" },
+  { id: "no", label: "No phone" },
 ];
 
 export default function PeopleView() {
@@ -37,6 +52,9 @@ export default function PeopleView() {
   const [emailStatus, setEmailStatus] = useState("");
   const [company, setCompany] = useState("");
   const [location, setLocation] = useState("");
+  const [priority, setPriority] = useState("");
+  const [hasPhone, setHasPhone] = useState("");
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [sort, setSort] = useState("recent");
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
@@ -70,6 +88,9 @@ export default function PeopleView() {
     if (emailStatus) params.set("email_status", emailStatus);
     if (company.trim()) params.set("company", company.trim());
     if (location.trim()) params.set("location", location.trim());
+    if (priority) params.set("priority", priority);
+    if (hasPhone) params.set("has_phone", hasPhone);
+    if (includeArchived) params.set("include_archived", "true");
     try {
       setData(await api(`/api/people?${params}`));
     } catch (err) {
@@ -77,7 +98,7 @@ export default function PeopleView() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, stage, emailStatus, company, location, sort]);
+  }, [page, q, stage, emailStatus, company, location, priority, hasPhone, includeArchived, sort]);
 
   useEffect(() => {
     const t = setTimeout(load, 180);
@@ -214,6 +235,22 @@ export default function PeopleView() {
 
   const items = data?.items || [];
   const meta = data?.page;
+  const filtersActive = Boolean(
+    q.trim() || stage || emailStatus || company.trim() || location.trim() || priority || hasPhone || includeArchived || sort !== "recent"
+  );
+
+  function resetFilters() {
+    setQ("");
+    setStage("");
+    setEmailStatus("");
+    setCompany("");
+    setLocation("");
+    setPriority("");
+    setHasPhone("");
+    setIncludeArchived(false);
+    setSort("recent");
+    setPage(1);
+  }
   const allOnPageSelected = items.length > 0 && items.every((p) => selectedIds.includes(p.id));
   const topGroups = groups.filter((g) => !g.parent_id);
   const subGroups = groups.filter((g) => String(g.parent_id) === String(groupId));
@@ -262,33 +299,75 @@ export default function PeopleView() {
         )}
       </div>
 
-      <div className="people-toolbar">
-        <input
-          value={q}
-          placeholder="Search name, email, company, title…"
-          onChange={(e) => { setPage(1); setQ(e.target.value); }}
-        />
-        <input
-          value={company}
-          placeholder="Filter company…"
-          style={{ minWidth: 160 }}
-          onChange={(e) => { setPage(1); setCompany(e.target.value); }}
-        />
-        <input
-          value={location}
-          placeholder="Filter location…"
-          style={{ minWidth: 160 }}
-          onChange={(e) => { setPage(1); setLocation(e.target.value); }}
-        />
-        <select className="stage-select" value={stage} onChange={(e) => { setPage(1); setStage(e.target.value); }}>
-          {STAGES.map((s) => <option key={s.id || "all"} value={s.id}>{s.label}</option>)}
-        </select>
-        <select className="stage-select" value={emailStatus} onChange={(e) => { setPage(1); setEmailStatus(e.target.value); }}>
-          {EMAIL_FILTERS.map((s) => <option key={s.id || "any"} value={s.id}>{s.label}</option>)}
-        </select>
-        <select className="stage-select" value={sort} onChange={(e) => { setPage(1); setSort(e.target.value); }}>
-          {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
+      <div className="people-filters">
+        <div className="people-chips" role="group" aria-label="Email">
+          {EMAIL_FILTERS.map((item) => {
+            const count = data?.email_counts?.[item.countKey];
+            const pressed = emailStatus === item.id;
+            return (
+              <button
+                key={item.countKey}
+                type="button"
+                className={`people-chip ${pressed ? "is-on" : ""}`}
+                aria-pressed={pressed}
+                onClick={() => { setPage(1); setEmailStatus(item.id); }}
+              >
+                {item.label}
+                {count != null ? <span>{count}</span> : null}
+              </button>
+            );
+          })}
+          {filtersActive ? (
+            <button type="button" className="ghost people-reset" onClick={resetFilters}>Reset filters</button>
+          ) : null}
+        </div>
+        <div className="people-toolbar">
+          <input
+            value={q}
+            placeholder="Search name, email, company, title…"
+            onChange={(e) => { setPage(1); setQ(e.target.value); }}
+          />
+          <input
+            value={company}
+            placeholder="Company"
+            aria-label="Company"
+            onChange={(e) => { setPage(1); setCompany(e.target.value); }}
+          />
+          <input
+            value={location}
+            placeholder="Location"
+            aria-label="Location"
+            onChange={(e) => { setPage(1); setLocation(e.target.value); }}
+          />
+          <select className="stage-select" aria-label="Status" value={stage} onChange={(e) => { setPage(1); setStage(e.target.value); }}>
+            {STAGES.map((s) => <option key={s.id || "all"} value={s.id}>{s.label}</option>)}
+          </select>
+          <select className="stage-select" aria-label="Priority" value={priority} onChange={(e) => { setPage(1); setPriority(e.target.value); }}>
+            {PRIORITIES.map((s) => <option key={s.id || "any-priority"} value={s.id}>{s.label}</option>)}
+          </select>
+          <select className="stage-select" aria-label="Phone" value={hasPhone} onChange={(e) => { setPage(1); setHasPhone(e.target.value); }}>
+            {PHONE_FILTERS.map((s) => <option key={s.id || "any-phone"} value={s.id}>{s.label}</option>)}
+          </select>
+          <select className="stage-select" aria-label="Sort" value={sort} onChange={(e) => { setPage(1); setSort(e.target.value); }}>
+            {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => { setPage(1); setIncludeArchived(e.target.checked); }}
+            />
+            Show archived
+          </label>
+        </div>
+        <p className="people-count">
+          {meta
+            ? `${meta.total} matching ${meta.total === 1 ? "lead" : "leads"}`
+            : "Loading leads…"}
+          {meta && data?.email_counts && emailStatus && data.email_counts.all !== meta.total
+            ? ` · ${data.email_counts.all} before the email filter`
+            : ""}
+        </p>
       </div>
 
       {banner && <p className="meta" style={{ color: "#047857", fontWeight: 600 }}>{banner}</p>}
@@ -354,17 +433,42 @@ export default function PeopleView() {
                 <th style={{ width: 36 }}>
                   <input type="checkbox" checked={allOnPageSelected} onChange={toggleAllOnPage} aria-label="Select page" />
                 </th>
-                <th>Person</th>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Score</th>
+                <th>
+                  <button type="button" className="people-sort" onClick={() => { setPage(1); setSort("name"); }}>Person</button>
+                </th>
+                <th>
+                  <button type="button" className="people-sort" onClick={() => { setPage(1); setSort("company"); }}>Company</button>
+                </th>
+                <th>
+                  <button type="button" className="people-sort" onClick={() => { setPage(1); setSort("email"); }}>Email</button>
+                </th>
+                <th>
+                  <button type="button" className="people-sort" onClick={() => { setPage(1); setSort("relevance"); }}>Score</button>
+                </th>
                 <th>Search</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={7}>Loading…</td></tr>}
-              {!loading && !items.length && <tr><td colSpan={7}>No leads match this filter.</td></tr>}
+              {loading && <tr><td colSpan={7}>Loading leads…</td></tr>}
+              {!loading && !items.length && (
+                <tr>
+                  <td colSpan={7}>
+                    <div className="people-empty">
+                      {(data?.library_total ?? 0) === 0 && !filtersActive ? (
+                        <p>No leads yet. People from your searches show up here.</p>
+                      ) : (
+                        <>
+                          <p>No leads match these filters.</p>
+                          {filtersActive ? (
+                            <button type="button" className="ghost" onClick={resetFilters}>Reset filters</button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
               {items.map((person) => (
                 <tr
                   key={person.id}
@@ -387,8 +491,10 @@ export default function PeopleView() {
                     <div className="people-sub">{person.company_domain || ""}</div>
                   </td>
                   <td>
-                    <div>{person.email || "—"}</div>
-                    {person.email_status ? <div className="people-sub">{person.email_status}</div> : null}
+                    <div>{emailPresenceLabel(person)}</div>
+                    {storedEmailStatusLabel(person) ? (
+                      <div className="people-sub">{storedEmailStatusLabel(person)}</div>
+                    ) : null}
                   </td>
                   <td>{Math.round((person.relevance_score || 0) * 100)}%</td>
                   <td className="people-sub">{person.search_name}</td>
@@ -416,7 +522,7 @@ export default function PeopleView() {
               <h3>{selected.name}</h3>
               <p className="lede">{selected.work_designation || "—"} · {selected.company_name || "No company"}</p>
               <dl className="drawer-facts">
-                <div><dt>Email</dt><dd>{selected.email || "Not found"}</dd></div>
+                <div><dt>Email</dt><dd>{emailPresenceLabel(selected)}{storedEmailStatusLabel(selected) ? ` · ${storedEmailStatusLabel(selected)}` : ""}</dd></div>
                 <div><dt>Phone</dt><dd>{selected.phone || "—"}</dd></div>
                 <div><dt>Location</dt><dd>{selected.personal_location || "—"}</dd></div>
                 <div><dt>Domain</dt><dd>{selected.company_domain || "—"}</dd></div>
@@ -509,7 +615,10 @@ export default function PeopleView() {
 
       {meta && (
         <div className="pager">
-          <span>{meta.total} discovered leads</span>
+          <span>
+            {meta.total} matching {meta.total === 1 ? "lead" : "leads"}
+            {data?.library_total != null ? ` · ${data.library_total} in this list` : ""}
+          </span>
           <span>
             <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
             {" "}page {meta.page} of {meta.total_pages}{" "}

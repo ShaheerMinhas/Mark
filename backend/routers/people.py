@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from backend.database import get_db
@@ -82,6 +82,51 @@ def _record_activity(
     )
 
 
+def _has_email():
+    return and_(LeadRecord.email.isnot(None), LeadRecord.email != "")
+
+
+def _missing_email():
+    return or_(LeadRecord.email.is_(None), LeadRecord.email == "")
+
+
+def _email_was_looked_up():
+    """A lookup wrote a timestamp or a status. An address alone is not a lookup."""
+    return or_(
+        LeadRecord.email_enriched_at.isnot(None),
+        and_(LeadRecord.email_status.isnot(None), LeadRecord.email_status != ""),
+    )
+
+
+def _apply_email_filter(query, email_status: str):
+    es = (email_status or "").strip().lower()
+    if not es:
+        return query
+    if es in {"with_email", "has_email"}:
+        return query.filter(_has_email())
+    if es in {"without_email", "missing"}:
+        return query.filter(_missing_email())
+    if es == "not_searched":
+        return query.filter(_missing_email(), ~_email_was_looked_up())
+    if es == "no_email_found":
+        return query.filter(_missing_email(), _email_was_looked_up())
+    return query.filter(func.lower(func.coalesce(LeadRecord.email_status, "")) == es)
+
+
+def _email_facets(query) -> dict[str, int]:
+    all_count = int(query.count())
+    with_email = int(query.filter(_has_email()).count())
+    not_searched = int(query.filter(_missing_email(), ~_email_was_looked_up()).count())
+    no_email_found = int(query.filter(_missing_email(), _email_was_looked_up()).count())
+    return {
+        "all": all_count,
+        "with_email": with_email,
+        "without_email": all_count - with_email,
+        "not_searched": not_searched,
+        "no_email_found": no_email_found,
+    }
+
+
 def _item(lead: LeadRecord) -> PeopleItem:
     job = lead.search_job
     data = LeadOut.model_validate(lead).model_dump()
@@ -105,6 +150,7 @@ def list_people(
     email_status: str = "",
     company: str = "",
     location: str = "",
+    has_phone: str = "",
     priority: str = "",
     tag: str = "",
     assigned_user_id: int | None = None,
@@ -146,15 +192,6 @@ def list_people(
             | (func.coalesce(LeadRecord.crm_stage, "new") == chosen_stage)
         )
 
-    if email_status:
-        es = email_status.strip().lower()
-        if es == "missing":
-            query = query.filter(LeadRecord.email.is_(None) | (LeadRecord.email == ""))
-        elif es == "has_email":
-            query = query.filter(LeadRecord.email.isnot(None) & (LeadRecord.email != ""))
-        else:
-            query = query.filter(func.lower(func.coalesce(LeadRecord.email_status, "")) == es)
-
     if company.strip():
         query = query.filter(func.lower(func.coalesce(LeadRecord.company_name, "")).like(f"%{company.strip().lower()}%"))
     if location.strip():
@@ -163,17 +200,33 @@ def list_people(
             func.lower(func.coalesce(LeadRecord.personal_location, "")).like(loc)
             | func.lower(func.coalesce(LeadRecord.company_location, "")).like(loc)
         )
+    phone_choice = has_phone.strip().lower()
+    if phone_choice in {"yes", "true", "1"}:
+        query = query.filter(and_(LeadRecord.phone.isnot(None), LeadRecord.phone != ""))
+    elif phone_choice in {"no", "false", "0"}:
+        query = query.filter(or_(LeadRecord.phone.is_(None), LeadRecord.phone == ""))
     if priority.strip():
         query = query.filter(func.coalesce(LeadRecord.priority, "medium") == priority.strip().lower())
     if assigned_user_id is not None:
         query = query.filter(LeadRecord.assigned_user_id == assigned_user_id)
 
+    email_counts = _email_facets(query)
+    query = _apply_email_filter(query, email_status)
+
+    has_email_rank = case((_has_email(), 0), else_=1)
+    priority_rank = case(
+        (func.lower(func.coalesce(LeadRecord.priority, "medium")) == "high", 0),
+        (func.lower(func.coalesce(LeadRecord.priority, "medium")) == "low", 2),
+        else_=1,
+    )
     sorts = {
         "recent": (LeadRecord.id.desc(),),
         "relevance": (LeadRecord.relevance_score.desc(), LeadRecord.id.desc()),
-        "name": (LeadRecord.name.asc(), LeadRecord.id.asc()),
-        "company": (LeadRecord.company_name.asc(), LeadRecord.id.asc()),
-        "priority": (LeadRecord.priority.asc(), LeadRecord.id.desc()),
+        "name": (func.lower(LeadRecord.name).asc(), LeadRecord.id.asc()),
+        "company": (func.lower(func.coalesce(LeadRecord.company_name, "")).asc(), LeadRecord.id.asc()),
+        "title": (func.lower(func.coalesce(LeadRecord.work_designation, "")).asc(), LeadRecord.id.asc()),
+        "priority": (priority_rank.asc(), LeadRecord.id.desc()),
+        "email": (has_email_rank.asc(), func.lower(LeadRecord.name).asc(), LeadRecord.id.asc()),
     }
     order = sorts.get(sort, sorts["recent"])
 
@@ -201,6 +254,19 @@ def list_people(
         key = name if name in counts else "new"
         counts[key] = counts.get(key, 0) + int(count)
 
+    archive_clause = LeadRecord.archived_at.is_(None)
+    if archived_only:
+        library_total = int(
+            base.filter(
+                LeadRecord.archived_at.isnot(None)
+                | (func.coalesce(LeadRecord.lead_status, LeadRecord.crm_stage, "new") == "archived")
+            ).count()
+        )
+    elif include_archived or stage == "archived" or status == "archived":
+        library_total = int(base.count())
+    else:
+        library_total = int(base.filter(archive_clause).count())
+
     total_pages = max(1, (total + page_size - 1) // page_size)
     return PeoplePageOut(
         items=[_item(row) for row in rows],
@@ -212,6 +278,8 @@ def list_people(
             has_next=page < total_pages,
         ),
         stage_counts=counts,
+        email_counts=email_counts,
+        library_total=library_total,
     )
 
 

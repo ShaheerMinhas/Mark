@@ -149,6 +149,37 @@ def test_progress_endpoint_exposes_stage_and_counters(client, auth, db):
     assert body["candidates_found"] == 67
     assert body["candidates_deduplicated"] == 12
     assert body["progress"] == 32
+    assert body["run"]["email_lookup"]["state"] == "pending"
+    assert body["run"]["percent"] == 24
+    assert "looking up emails" not in body["run"]["message"].lower()
+
+
+def test_progress_keeps_email_lookup_visible_after_discovery_finishes(client, auth, db):
+    payload = create_search(client, auth)
+    search_id = payload["search"]["id"]
+    job = db.get(SearchJob, search_id)
+    job.status = SearchJobStatus.COMPLETED
+    job.progress = 100
+    job.total_queries = 4
+    job.completed_queries = 4
+    job.qualified_leads = 8
+    job.message = "4 candidates found · 8 relevant leads"
+    db.add(
+        QueuedJob(
+            job_type=JobType.SEARCH_ENRICHMENT.value,
+            payload={"search_job_id": job.id, "use_providers": True},
+            status=QueuedJobStatus.QUEUED.value,
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/search-jobs/{search_id}", headers=auth).json()
+
+    assert body["progress"] == 100
+    assert body["run"]["active"] is True
+    assert body["run"]["email_lookup"]["state"] == "pending"
+    assert body["run"]["percent"] == 70
+    assert "not started" in body["run"]["message"].lower()
 
 
 def test_progress_hides_internal_error_detail(client, auth, db):

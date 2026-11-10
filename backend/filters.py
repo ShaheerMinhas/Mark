@@ -111,9 +111,17 @@ FILTER_DEFINITIONS = {
         "presets": [100, 250, 500, 1000, 2500, 5000, 10000],
     },
     "enrichment_mode": {
-        "label": "Email enrichment",
+        "label": "Email lookup",
         "type": "select",
         "default": "after_discovery",
-        "options": ["after_discovery", "selected", "auto"],
+        "allow_empty": False,
+        "allow_custom": False,
+        "options": ["after_discovery", "selected"],
+        "option_labels": {
+            "after_discovery": "Look up emails after this search",
+            "auto": "Look up emails after this search",
+            "selected": "Don't look up emails",
+        },
+        "hint": "This is part of the search. The progress bar stays on this choice: waiting, looking, finished, skipped, or failed. “Don't look up emails” leaves addresses blank until you choose Find emails.",
     },
 }

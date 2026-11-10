@@ -17,9 +17,16 @@ export default function FilterGrid({ filterDefs, values, onChange }) {
   }
 
   function isCustom(key, options) {
+    if (filterDefs[key]?.allow_custom === false) return false;
     const current = asDraft(values[key]);
     if (customMode[key]) return true;
     return Boolean(current) && !(options || []).includes(current);
+  }
+
+  function selectOptions(def, current) {
+    const options = [...(def.options || [])];
+    if (current && !options.includes(current)) options.push(current);
+    return options;
   }
 
   function selectValue(key, options) {
@@ -53,12 +60,13 @@ export default function FilterGrid({ filterDefs, values, onChange }) {
                     }
                   }}
                 >
-                  <option value="">Any</option>
-                  {(def.options || []).map((o) => (
-                    <option key={o} value={o}>{o}</option>
+                  {def.allow_empty === false ? null : <option value="">Any</option>}
+                  {selectOptions(def, values[key]).map((o) => (
+                    <option key={o} value={o}>{def.option_labels?.[o] || o}</option>
                   ))}
-                  <option value="__custom__">Custom…</option>
+                  {def.allow_custom === false ? null : <option value="__custom__">Custom…</option>}
                 </select>
+                {def.hint ? <p className="field-hint">{def.hint}</p> : null}
                 {isCustom(key, def.options) && (
                   <>
                     <input

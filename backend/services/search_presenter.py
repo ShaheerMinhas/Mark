@@ -5,13 +5,17 @@ from sqlalchemy.orm import Session
 
 from backend.models import (
     LEGACY_SEARCH_STATUSES,
+    EmailEnrichmentJob,
+    JobType,
     LeadRecord,
+    QueuedJob,
     SearchJob,
     SearchJobStatus,
     TERMINAL_SEARCH_STATUSES,
 )
-from backend.schemas import SearchJobOut, SearchProgressOut
+from backend.schemas import SearchJobOut, SearchProgressOut, SearchRunOut
 from backend.services import search_state
+from backend.services.search_run import ManualEmailJob, build_search_run
 
 
 def legacy_status(status: SearchJobStatus) -> SearchJobStatus:
@@ -70,6 +74,65 @@ def search_job_out(job: SearchJob, db: Session | None = None) -> SearchJobOut:
     )
 
 
+def _latest_enrichment_queue(db: Session, search_id: int) -> QueuedJob | None:
+    rows = (
+        db.query(QueuedJob)
+        .filter(QueuedJob.job_type == JobType.SEARCH_ENRICHMENT.value)
+        .order_by(QueuedJob.id.desc())
+        .all()
+    )
+    for row in rows:
+        payload = row.payload or {}
+        try:
+            if int(payload.get("search_job_id") or 0) == int(search_id):
+                return row
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _manual_email_job(db: Session | None, search_id: int) -> ManualEmailJob | None:
+    if db is None:
+        return None
+    from backend.services.EmailModule.jobs import latest_email_job
+
+    row: EmailEnrichmentJob | None = latest_email_job(db, search_id)
+    if row is None:
+        return None
+    return ManualEmailJob(
+        status=row.status or "",
+        processed=int(row.processed or 0),
+        total=int(row.total or 0),
+        found=int(row.found or 0),
+        inferred=int(row.inferred or 0),
+        verified=int(row.verified or 0),
+        not_found=int(row.not_found or 0),
+        message=row.message or "",
+    )
+
+
+def search_run_for(job: SearchJob, db: Session | None) -> SearchRunOut:
+    queue = _latest_enrichment_queue(db, job.id) if db is not None else None
+    manual = _manual_email_job(db, job.id)
+    run = build_search_run(
+        status=job.status.value if hasattr(job.status, "value") else job.status,
+        enrichment_mode=(job.filters or {}).get("enrichment_mode"),
+        total_queries=int(job.total_queries or 0),
+        completed_queries=int(job.completed_queries or 0),
+        failed_queries=int(job.failed_queries or 0),
+        qualified_leads=int(job.qualified_leads or 0),
+        enrichment_attempted=int(job.enrichment_attempted or 0),
+        enrichment_completed=int(job.enrichment_completed or 0),
+        emails_found=int(job.emails_found or 0),
+        cancel_requested=bool(job.cancel_requested),
+        job_message=job.message or "",
+        queue_status=queue.status if queue is not None else None,
+        queue_error=queue.last_error if queue is not None else None,
+        manual=manual,
+    )
+    return SearchRunOut.model_validate(run.as_dict())
+
+
 def search_progress_out(job: SearchJob, db: Session | None = None) -> SearchProgressOut:
     """Full progress payload for the polling endpoint."""
     return SearchProgressOut(
@@ -82,6 +145,7 @@ def search_progress_out(job: SearchJob, db: Session | None = None) -> SearchProg
         message=job.message or "",
         error_message=job.error_message,
         cancel_requested=bool(job.cancel_requested),
+        run=search_run_for(job, db),
         lead_count=_lead_count(job, db),
         created_at=job.created_at,
         started_at=job.started_at,

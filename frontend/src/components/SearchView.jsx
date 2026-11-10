@@ -35,6 +35,12 @@ function isOpen(status) {
   return OPEN_STATUSES.has(status);
 }
 
+function runIsActive(status) {
+  if (!status) return false;
+  if (status.run && typeof status.run.active === "boolean") return status.run.active;
+  return isOpen(status.status);
+}
+
 export default function SearchView({ prefill, onClearPrefill }) {
   const [filterDefs, setFilterDefs] = useState({});
   const [filterValues, setFilterValues] = useState({});
@@ -49,7 +55,6 @@ export default function SearchView({ prefill, onClearPrefill }) {
   const [progress, setProgress] = useState(null);
   const [funnel, setFunnel] = useState(null);
   const [searchId, setSearchId] = useState(null);
-  const [emailJob, setEmailJob] = useState(null);
   const [findingEmails, setFindingEmails] = useState(false);
   const [lookingId, setLookingId] = useState(null);
   const watchToken = useRef(0);
@@ -84,8 +89,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
    * more leads. Leads appear while discovery is still running.
    */
   const watchSearch = useCallback(
-    async (id) => {
-      const token = ++watchToken.current;
+    async (id, token) => {
       let lastLeadCount = -1;
 
       while (token === watchToken.current) {
@@ -103,7 +107,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
           }
         }
 
-        if (!isOpen(status.status)) {
+        if (!runIsActive(status)) {
           await loadFunnel(id);
           if (status.lead_count > 0) await loadPage(id, 1);
           return status;
@@ -117,7 +121,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
 
   const loadSearch = useCallback(
     async (id) => {
-      watchToken.current += 1;
+      const token = ++watchToken.current;
       setSearching(true);
       setShowResults(true);
       setLeads([]);
@@ -130,18 +134,21 @@ export default function SearchView({ prefill, onClearPrefill }) {
         const status = await api(`/api/search-jobs/${id}`);
         setProgress(status);
         setName(status.name || "");
-        if (isOpen(status.status)) {
-          await watchSearch(id);
+        if (token !== watchToken.current) return;
+        if (runIsActive(status)) {
+          await watchSearch(id, token);
         } else {
           setMeta(status.message || "");
           await loadFunnel(id);
           if (status.lead_count > 0) await loadPage(id, 1);
         }
       } catch (err) {
-        setMeta(err.message);
-        setLeads([]);
+        if (token === watchToken.current) {
+          setMeta(err.message);
+          setLeads([]);
+        }
       } finally {
-        setSearching(false);
+        if (token === watchToken.current) setSearching(false);
       }
     },
     [loadFunnel, loadPage, watchSearch]
@@ -163,14 +170,13 @@ export default function SearchView({ prefill, onClearPrefill }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    watchToken.current += 1;
+    const token = ++watchToken.current;
     setSearching(true);
     setShowResults(true);
     setLeads([]);
     setPageMeta(null);
     setFunnel(null);
     setProgress(null);
-    setEmailJob(null);
     setMeta("Queued — discovery is starting…");
     try {
       const filters = {
@@ -189,11 +195,11 @@ export default function SearchView({ prefill, onClearPrefill }) {
       });
       const id = created.search?.id;
       setSearchId(id);
-      if (id) await watchSearch(id);
+      if (id && token === watchToken.current) await watchSearch(id, token);
     } catch (err) {
-      setMeta(err.message);
+      if (token === watchToken.current) setMeta(err.message);
     } finally {
-      setSearching(false);
+      if (token === watchToken.current) setSearching(false);
     }
   }
 
@@ -216,39 +222,22 @@ export default function SearchView({ prefill, onClearPrefill }) {
     }
   }
 
-  async function watchEmails(id) {
-    setFindingEmails(true);
-    try {
-      while (true) {
-        const data = await api(`/api/searches/${id}/emails`);
-        setEmailJob(data.email_job || null);
-        const status = data.email_job?.status;
-        if (!status || status === "completed" || status === "failed") {
-          if (data.email_job?.message) setMeta(data.email_job.message);
-          break;
-        }
-        await sleep(POLL_INTERVAL_MS);
-      }
-      await loadPage(id, page);
-      await loadFunnel(id);
-    } catch (err) {
-      setMeta(err.message);
-    } finally {
-      setFindingEmails(false);
-    }
-  }
-
   async function handleFindEmails() {
-    if (!searchId) return;
+    if (!searchId || runIsActive(progress)) return;
+    const token = ++watchToken.current;
     setFindingEmails(true);
-    setMeta("Finding emails…");
+    setSearching(true);
+    setMeta("Email lookup is starting…");
     try {
-      const data = await api(`/api/searches/${searchId}/emails`, { method: "POST" });
-      setEmailJob(data.email_job || null);
-      await watchEmails(searchId);
+      await api(`/api/searches/${searchId}/emails`, { method: "POST" });
+      if (token === watchToken.current) await watchSearch(searchId, token);
     } catch (err) {
-      setMeta(err.message);
-      setFindingEmails(false);
+      if (token === watchToken.current) setMeta(err.message);
+    } finally {
+      if (token === watchToken.current) {
+        setFindingEmails(false);
+        setSearching(false);
+      }
     }
   }
 
@@ -270,6 +259,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
   }
 
   const totalLeads = pageMeta?.total ?? leads.length;
+  const runActive = searching || runIsActive(progress);
 
   return (
     <section className="view search-view">
@@ -279,7 +269,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
             <p className="app-kicker">Prospect</p>
             <h2>Find people</h2>
             <p className="lede">
-              Each search is sized for up to 2,000 people. Results stream in while Mark is still searching.
+              Each search is sized for up to 2,000 people. Email lookup follows the choice in the filters, and the same progress bar says whether it is waiting, running, finished, skipped, or failed.
             </p>
           </div>
           <span className="volume-pill">Target 2,000</span>
@@ -290,43 +280,30 @@ export default function SearchView({ prefill, onClearPrefill }) {
               <div className="results-head">
                 <div>
                   <h3>Results</h3>
-                  {searching ? null : <p className="meta">{meta}</p>}
-                  {emailJob?.status === "running" || findingEmails ? (
-                    <p className="meta">
-                      Emails {emailJob?.processed ?? 0}/{emailJob?.total ?? totalLeads}
-                      {emailJob?.message ? ` · ${emailJob.message}` : ""}
-                    </p>
-                  ) : null}
+                  {runActive || progress?.run ? null : <p className="meta">{meta}</p>}
                 </div>
                 <div className="results-actions">
-                  {searching ? (
+                  {runActive ? (
                     <button type="button" onClick={handleCancel}>
                       Stop search
                     </button>
                   ) : null}
-                  {!searching && searchId && leads.length ? (
+                  {!runActive && searchId && totalLeads > 0 ? (
                     <button type="button" onClick={handleFindEmails} disabled={findingEmails}>
-                      {findingEmails ? "Finding emails…" : "Find emails"}
+                      Find emails
                     </button>
                   ) : null}
                 </div>
               </div>
 
-              {searching ? (
-                <SearchProgress
-                  progress={progress?.progress ?? 0}
-                  message={meta}
-                  status={progress?.status}
-                  stage={progress?.current_stage}
-                  counters={progress}
-                />
-              ) : (
-                <SearchFunnel funnel={funnel} />
-              )}
+              {runActive || progress?.run ? (
+                <SearchProgress run={progress?.run} counters={progress} />
+              ) : null}
+              {runActive ? null : <SearchFunnel funnel={funnel} />}
 
               <LeadsTable
                 leads={leads}
-                onFindOne={findingEmails ? undefined : handleFindOne}
+                onFindOne={runActive || findingEmails ? undefined : handleFindOne}
                 lookingId={lookingId}
               />
 
@@ -387,8 +364,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
             {searching ? "Searching…" : "Find leads"}
           </button>
           <p className="search-pace-hint">
-            Runs in the background. Candidates are saved as they're found, so a rate limit never
-            wipes out the whole search.
+            Runs in the background. If email lookup is on, it starts after people are saved and stays on this progress bar. Turn it off to skip address lookup.
           </p>
         </div>
       </form>
