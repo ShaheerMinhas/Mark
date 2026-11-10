@@ -147,6 +147,52 @@
 }
 .app-signout:hover { background: rgba(255, 255, 255, 0.06); }
 
+@media (max-width: 860px) {
+  .app-shell { flex-direction: column; }
+  .app-side {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: auto;
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    padding: 0.55rem 0.75rem 0.65rem;
+  }
+  .app-brand { order: 1; padding: 0; }
+  .app-brand small { display: none; }
+  .app-user {
+    order: 2;
+    margin: 0 0 0 auto;
+    padding: 0;
+    border: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .app-user span { display: none; margin: 0; }
+  .app-user strong { max-width: 8rem; font-size: 0.8rem; }
+  .app-nav {
+    order: 3;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    width: 100%;
+  }
+  .app-nav-group { flex-direction: row; flex-wrap: wrap; gap: 0.15rem; }
+  .app-nav-label { display: none; }
+  .app-nav-btn {
+    width: auto;
+    padding: 0.38rem 0.6rem;
+    font-size: 0.82rem;
+  }
+  .app-shell .content {
+    padding: 1rem 0.85rem 2rem;
+  }
+}
+
 .app-shell .content {
   flex: 1;
   min-width: 0;
@@ -155,24 +201,87 @@
   padding: 1.35rem 1.6rem 2.5rem;
 }
 
-.app-shell.screen--search .content {
-  margin-right: var(--search-sidebar-width);
-  padding-top: 1rem;
-}
-
 .app-kicker {
-  margin: 0 0 0.25rem;
-  font-size: 0.75rem;
+  margin: 0 0 0.2rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #6366f1;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-soft);
 }
 
 .app-shell h2 {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
+  font-size: 1.45rem;
   font-weight: 650;
   letter-spacing: -0.03em;
+  margin: 0 0 0.25rem;
+}
+
+.app-shell h3 {
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .lede {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.app-shell .view-head { margin-bottom: 1rem; align-items: center; }
+
+.app-shell .btn-new-search,
+.app-shell .actions button,
+.app-shell button[type="submit"]:not(.ghost):not(.people-chip) {
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 0.45rem 0.9rem;
+  width: auto;
+  font-size: 0.9rem;
+  box-shadow: none;
+}
+
+.app-shell .search-sidebar .actions button { width: 100%; }
+
+.app-shell .ghost {
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  min-height: 36px;
+}
+
+.app-shell .ghost:hover { background: #f8fafc; }
+
+.app-shell .ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.app-shell .btn-quiet {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  min-height: 36px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.app-shell .btn-quiet:hover { background: #f1f5f9; color: var(--ink); }
+.app-shell .btn-quiet:disabled { opacity: 0.4; cursor: not-allowed; }
+.app-shell .btn-quiet.is-danger:hover { color: var(--bad); background: #fef2f2; }
+
+.notice {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.notice.is-ok { color: var(--good); }
+
+.section-title {
+  margin: 0.25rem 0 0.7rem;
 }
 
 .metric-row {
@@ -276,6 +385,11 @@
   flex-wrap: wrap;
 }
 
+.app-shell .people-toolbar input {
+  min-width: 0;
+  flex: 1 1 150px;
+}
+
 .people-toolbar input, .crm-toolbar input, .note-input {
   border: 1px solid var(--line);
   background: #fff;
@@ -301,9 +415,9 @@
 
 .people-table th {
   text-align: left;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: #64748b;
   padding: 0.7rem 0.85rem;
   border-bottom: 1px solid var(--line);

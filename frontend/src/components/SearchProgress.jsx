@@ -43,10 +43,6 @@ export default function SearchProgress({ run, counters }) {
   } = counters || {};
   const queriesDone = completedQueries + failedQueries;
 
-  const emailLine = email
-    ? describeEmail(email)
-    : "Email lookup status is not available yet.";
-
   return (
     <div
       className={`search-progress ${tone}`}
@@ -62,9 +58,8 @@ export default function SearchProgress({ run, counters }) {
           <p className="search-progress-kicker">{active ? "Search in progress" : "Search status"}</p>
           <h3 className="search-progress-title">{run?.stage_label || "Waiting for search status"}</h3>
         </div>
-        <div className="search-progress-clock" aria-label={determinate ? "Measured progress" : "Progress not measured yet"}>
+        <div className="search-progress-clock" aria-label={determinate ? "Progress" : "Progress not available yet"}>
           <span>{determinate ? `${Math.round(percent)}%` : "—"}</span>
-          <small>{determinate ? "measured" : "not measured"}</small>
         </div>
       </div>
 
@@ -75,8 +70,7 @@ export default function SearchProgress({ run, counters }) {
         />
       </div>
 
-      <p className="search-progress-stage">{run?.message || "Waiting for the search to report what it is doing."}</p>
-      <p className="search-progress-email">{emailLine}</p>
+      <p className="search-progress-stage">{run?.message || "Waiting for this search to report what it is doing."}</p>
 
       {stages.length ? (
         <ol className="search-progress-phases">
@@ -104,31 +98,3 @@ export default function SearchProgress({ run, counters }) {
   );
 }
 
-function describeEmail(email) {
-  const state = email.state;
-  if (state === "running") {
-    if (email.total > 0) {
-      return `Email lookup is running · checked ${email.processed} of ${email.total}.`;
-    }
-    return "Email lookup is running.";
-  }
-  if (state === "pending") {
-    return email.detail || "Email lookup has not started.";
-  }
-  if (state === "not_requested") {
-    return "Email lookup is off. This search will not look for addresses.";
-  }
-  if (state === "finished") {
-    return email.detail || "Email lookup finished.";
-  }
-  if (state === "skipped") {
-    return email.detail || "Email lookup did not run.";
-  }
-  if (state === "failed") {
-    return "Email lookup failed. It is not still running.";
-  }
-  if (state === "stopped") {
-    return email.detail || "Email lookup was stopped.";
-  }
-  return email.detail || "Email lookup status is unknown.";
-}

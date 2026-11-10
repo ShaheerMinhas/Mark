@@ -122,6 +122,6 @@ FILTER_DEFINITIONS = {
             "auto": "Look up emails after this search",
             "selected": "Don't look up emails",
         },
-        "hint": "This is part of the search. The progress bar stays on this choice: waiting, looking, finished, skipped, or failed. “Don't look up emails” leaves addresses blank until you choose Find emails.",
+        "hint": "Runs after people are saved. “Don't look up emails” leaves addresses blank until you choose Find emails.",
     },
 }

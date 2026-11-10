@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, downloadExport } from "../api/client.js";
 
+const SEARCH_STATUS_LABELS = {
+  pending: "Queued",
+  running: "Running",
+  discovering: "Searching",
+  filtering: "Scoring",
+  enriching: "Finding emails",
+  completed: "Finished",
+  partially_completed: "Partial",
+  failed: "Failed",
+  cancelled: "Stopped",
+};
+
+function searchStatusLabel(status) {
+  return SEARCH_STATUS_LABELS[status] || String(status || "").replaceAll("_", " ");
+}
+
 export default function Dashboard({ onOpenSearch, onNewSearch }) {
   const [searches, setSearches] = useState([]);
   const [overview, setOverview] = useState(null);
@@ -51,11 +67,8 @@ export default function Dashboard({ onOpenSearch, onNewSearch }) {
     <section className="view">
       <div className="view-head">
         <div>
-          <p className="app-kicker">Dashboard</p>
-          <h2>Lead Intelligence Overview</h2>
-          <p className="lede">
-            Live metrics from your discovery database, email enrichment waterfall, and selective CRM groups.
-          </p>
+          <h2>Overview</h2>
+          <p className="lede">Searches, people, and emails in this workspace.</p>
         </div>
         <button type="button" className="btn-new-search" onClick={onNewSearch}>
           New search
@@ -63,28 +76,24 @@ export default function Dashboard({ onOpenSearch, onNewSearch }) {
       </div>
       {error && <p className="error-msg">{error}</p>}
 
+      {loading ? (
+        <div className="empty">Loading…</div>
+      ) : (
+      <>
       <div className="metric-row">
-        <div className="metric"><span>Discovered leads</span><strong>{totalDiscovered}</strong></div>
-        <div className="metric"><span>Unique people</span><strong>{overview?.unique_people ?? totalDiscovered}</strong></div>
-        <div className="metric"><span>Confirmed emails</span><strong>{overview?.confirmed_emails ?? 0}</strong></div>
-        <div className="metric"><span>CRM contacts</span><strong>{overview?.crm_contacts ?? 0}</strong></div>
+        <div className="metric"><span>Leads</span><strong>{totalDiscovered}</strong></div>
+        <div className="metric"><span>Emails</span><strong>{overview?.confirmed_emails ?? 0}</strong></div>
+        <div className="metric"><span>Searches</span><strong>{searches.length}</strong></div>
+        <div className="metric"><span>Running</span><strong>{overview?.active_searches ?? 0}</strong></div>
       </div>
 
-      <div className="metric-row" style={{ marginTop: "-0.4rem" }}>
-        <div className="metric"><span>Saved searches</span><strong>{searches.length}</strong></div>
-        <div className="metric"><span>Active jobs</span><strong>{overview?.active_searches ?? 0}</strong></div>
-        <div className="metric"><span>Pending enrichment</span><strong>{overview?.pending_email_enrichment ?? 0}</strong></div>
-        <div className="metric"><span>CRM groups</span><strong>{overview?.crm_groups ?? 0}</strong></div>
-      </div>
-
-      <h3 style={{ margin: "1.2rem 0 0.6rem" }}>Search History & Saved Searches</h3>
+      <h3 className="section-title">Searches</h3>
       <ul className="search-list">
-        {loading && <li className="empty">Loading…</li>}
-        {!loading && !searches.length && (
+        {!searches.length && (
           <li className="empty">
-            <p>No saved searches yet.</p>
+            <p>No searches yet.</p>
             <button type="button" className="btn-new-search btn-new-search--inline" onClick={onNewSearch}>
-              Run your first search
+              New search
             </button>
           </li>
         )}
@@ -97,20 +106,20 @@ export default function Dashboard({ onOpenSearch, onNewSearch }) {
                 {s.prompt.length > 100 ? "…" : ""}
               </p>
               <span className="meta">
-                <span className={`status-pill status-pill--${s.status}`}>{s.status.replaceAll("_", " ")}</span>
+                <span className={`status-pill status-pill--${s.detailed_status || s.status}`}>{searchStatusLabel(s.detailed_status || s.status)}</span>
                 {s.lead_count} leads · {s.emails_found || 0} emails · {new Date(s.created_at).toLocaleDateString()}
               </span>
             </div>
             <div className="search-actions">
-              <button type="button" className="ghost" onClick={() => onOpenSearch(s.id)}>
+              <button type="button" className="btn-new-search" onClick={() => onOpenSearch(s.id)}>
                 Open
               </button>
-              <button type="button" className="ghost" onClick={() => rerunSearch(s.id)}>
+              <button type="button" className="btn-quiet" onClick={() => rerunSearch(s.id)}>
                 Rerun
               </button>
               <button
                 type="button"
-                className="ghost"
+                className="btn-quiet"
                 disabled={s.status !== "completed"}
                 onClick={() => downloadExport(s.id, "csv")}
               >
@@ -118,19 +127,21 @@ export default function Dashboard({ onOpenSearch, onNewSearch }) {
               </button>
               <button
                 type="button"
-                className="ghost"
+                className="btn-quiet"
                 disabled={s.status !== "completed"}
                 onClick={() => downloadExport(s.id, "xml")}
               >
                 XML
               </button>
-              <button type="button" className="ghost" onClick={() => deleteSearch(s.id)}>
+              <button type="button" className="btn-quiet is-danger" onClick={() => deleteSearch(s.id)}>
                 Delete
               </button>
             </div>
           </li>
         ))}
       </ul>
+      </>
+      )}
     </section>
   );
 }

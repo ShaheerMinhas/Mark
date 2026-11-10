@@ -269,12 +269,11 @@ export default function PeopleView() {
 
   return (
     <section className="view">
-      <p className="app-kicker">My Leads · Discovery Database</p>
       <div className="view-head">
         <div>
-          <h2>Discovered Leads</h2>
+          <h2>Leads</h2>
           <p className="lede">
-            All people discovered across your searches live here first. Review, qualify, and selectively add chosen leads to the CRM.
+            People from your searches. Filter them, then add the ones you want to the CRM.
           </p>
         </div>
         {selectedIds.length > 0 && (
@@ -284,10 +283,10 @@ export default function PeopleView() {
               Add to CRM…
             </button>
             <button type="button" className="ghost" onClick={() => runBulk("update", { lead_status: "qualified" })}>
-              Mark Qualified
+              Mark qualified
             </button>
             <button type="button" className="ghost" onClick={() => runBulk("enrich")}>
-              Enrich Emails
+              Find emails
             </button>
             <button type="button" className="ghost" onClick={() => runBulk("archive")}>
               Archive
@@ -370,15 +369,14 @@ export default function PeopleView() {
         </p>
       </div>
 
-      {banner && <p className="meta" style={{ color: "#047857", fontWeight: 600 }}>{banner}</p>}
+      {banner && <p className="notice is-ok">{banner}</p>}
       {error && <p className="error-msg">{error}</p>}
 
       {transferOpen && (
         <div className="modal-card">
           <div className="view-head">
             <div>
-              <p className="app-kicker">Selective CRM Transfer</p>
-              <h3>Add selected leads to CRM</h3>
+              <h3>Add to CRM</h3>
             </div>
             <button type="button" className="ghost" onClick={() => setTransferOpen(false)}>Close</button>
           </div>
@@ -518,7 +516,6 @@ export default function PeopleView() {
         <aside className="crm-drawer">
           {selected ? (
             <>
-              <p className="app-kicker">Lead Profile</p>
               <h3>{selected.name}</h3>
               <p className="lede">{selected.work_designation || "—"} · {selected.company_name || "No company"}</p>
               <dl className="drawer-facts">
@@ -531,7 +528,7 @@ export default function PeopleView() {
 
               {selected.score_breakdown && (
                 <div className="score-box">
-                  <p className="app-kicker">Evidence Scores</p>
+                  <p className="app-kicker">Scores</p>
                   <div className="people-sub">
                     Title {Math.round((selected.score_breakdown.job_title_match || 0) * 100)}% ·
                     Company {Math.round((selected.score_breakdown.company_relevance || 0) * 100)}% ·
@@ -608,17 +605,14 @@ export default function PeopleView() {
               </ul>
             </>
           ) : (
-            <p className="lede">Select a lead to inspect evidence scores, tasks, notes, and activity history, or check rows to selectively transfer them to the CRM.</p>
+            <p className="lede">Select a person to see notes, tasks, and scores, or check rows to add them to the CRM.</p>
           )}
         </aside>
       </div>
 
       {meta && (
         <div className="pager">
-          <span>
-            {meta.total} matching {meta.total === 1 ? "lead" : "leads"}
-            {data?.library_total != null ? ` · ${data.library_total} in this list` : ""}
-          </span>
+          <span>{meta.total} matching</span>
           <span>
             <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
             {" "}page {meta.page} of {meta.total_pages}{" "}

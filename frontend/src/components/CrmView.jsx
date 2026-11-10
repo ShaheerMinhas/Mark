@@ -149,17 +149,16 @@ export default function CrmView() {
 
   return (
     <section className="view crm-view">
-      <p className="app-kicker">CRM · Managed Contacts & Nested Groups</p>
       <div className="view-head">
         <div>
-          <h2>CRM Pipeline</h2>
+          <h2>CRM</h2>
           <p className="lede">
-            Only contacts you explicitly transfer from Discovered Leads enter the CRM. Organize them into Groups and nested Subgroups.
+            Contacts you add from Leads. They are not added automatically.
           </p>
         </div>
         <div className="search-actions">
           <button type="button" className="ghost" onClick={exportCrmCsv}>
-            Export CRM CSV
+            Export CSV
           </button>
         </div>
       </div>
@@ -168,7 +167,7 @@ export default function CrmView() {
 
       <div className="crm-workspace">
         <aside className="crm-groups-pane">
-          <p className="app-kicker">Hierarchy</p>
+          <p className="app-kicker">Groups</p>
           <button
             type="button"
             className={`group-item ${activeGroupId === null ? "active" : ""}`}

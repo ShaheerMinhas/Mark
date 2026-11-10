@@ -57,6 +57,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
   const [searchId, setSearchId] = useState(null);
   const [findingEmails, setFindingEmails] = useState(false);
   const [lookingId, setLookingId] = useState(null);
+  const [notice, setNotice] = useState("");
   const watchToken = useRef(0);
   const lookingLock = useRef(false);
 
@@ -177,7 +178,8 @@ export default function SearchView({ prefill, onClearPrefill }) {
     setPageMeta(null);
     setFunnel(null);
     setProgress(null);
-    setMeta("Queued — discovery is starting…");
+    setNotice("");
+    setMeta("Queued. Discovery has not started.");
     try {
       const filters = {
         ...filterValues,
@@ -245,13 +247,13 @@ export default function SearchView({ prefill, onClearPrefill }) {
     if (lookingLock.current) return;
     lookingLock.current = true;
     setLookingId(leadId);
-    setMeta("Looking up email…");
+    setNotice("Looking up an email for this person…");
     try {
       const updated = await api(`/api/leads/${leadId}/email`, { method: "POST" });
       setLeads((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
-      setMeta(updated.email ? `Found ${updated.email}` : "No email found for that person");
+      setNotice(updated.email ? `Found ${updated.email}` : "No email found for that person.");
     } catch (err) {
-      setMeta(err.message);
+      setNotice(err.message);
     } finally {
       lookingLock.current = false;
       setLookingId(null);
@@ -262,17 +264,15 @@ export default function SearchView({ prefill, onClearPrefill }) {
   const runActive = searching || runIsActive(progress);
 
   return (
-    <section className="view search-view">
+    <section className={`view search-view ${showResults ? "has-results" : "is-idle"}`}>
       <div className="search-main">
         <div className="view-head">
           <div>
-            <p className="app-kicker">Prospect</p>
             <h2>Find people</h2>
             <p className="lede">
-              Each search is sized for up to 2,000 people. Email lookup follows the choice in the filters, and the same progress bar says whether it is waiting, running, finished, skipped, or failed.
+              Describe who you want. Results show up here while the search runs, including whether email lookup is on.
             </p>
           </div>
-          <span className="volume-pill">Target 2,000</span>
         </div>
         <section className="search-results-col" aria-live="polite">
           {showResults ? (
@@ -280,16 +280,16 @@ export default function SearchView({ prefill, onClearPrefill }) {
               <div className="results-head">
                 <div>
                   <h3>Results</h3>
-                  {runActive || progress?.run ? null : <p className="meta">{meta}</p>}
+                  {notice ? <p className={`notice ${notice.startsWith("Found ") ? "is-ok" : ""}`}>{notice}</p> : null}
                 </div>
                 <div className="results-actions">
                   {runActive ? (
-                    <button type="button" onClick={handleCancel}>
+                    <button type="button" className="ghost" onClick={handleCancel}>
                       Stop search
                     </button>
                   ) : null}
                   {!runActive && searchId && totalLeads > 0 ? (
-                    <button type="button" onClick={handleFindEmails} disabled={findingEmails}>
+                    <button type="button" className="btn-new-search" onClick={handleFindEmails} disabled={findingEmails}>
                       Find emails
                     </button>
                   ) : null}
@@ -327,14 +327,14 @@ export default function SearchView({ prefill, onClearPrefill }) {
             </>
           ) : (
             <div className="empty search-results-empty">
-              <p>Set a prompt and filters on the right, then find leads. Results will show here.</p>
+              <p>Name the search and describe who you want. Results will show here.</p>
             </div>
           )}
         </section>
       </div>
 
       <form className="panel search-sidebar" onSubmit={handleSubmit}>
-        <h3 className="search-sidebar-title">Search filters</h3>
+        <h3 className="search-sidebar-title">Search</h3>
         <div className="search-sidebar-body">
           <div className="field">
             <label htmlFor="search-name">Search name</label>
@@ -347,7 +347,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="prompt">Prompt search</label>
+            <label htmlFor="prompt">Who to find</label>
             <textarea
               id="prompt"
               rows={3}
@@ -364,7 +364,7 @@ export default function SearchView({ prefill, onClearPrefill }) {
             {searching ? "Searching…" : "Find leads"}
           </button>
           <p className="search-pace-hint">
-            Runs in the background. If email lookup is on, it starts after people are saved and stays on this progress bar. Turn it off to skip address lookup.
+            People are saved as they are found. Email lookup follows the choice below.
           </p>
         </div>
       </form>
