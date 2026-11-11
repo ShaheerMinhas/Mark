@@ -1145,6 +1145,24 @@ class FetchStat(Base):
     count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class DiscoverySearchBackend(Base):
+    """One LinkedIn search engine. Keys live in discovery_provider_secrets, not here."""
+
+    __tablename__ = "discovery_search_backends"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    max_requests_per_run: Mapped[int] = mapped_column(Integer, default=5)
+    daily_cap: Mapped[int] = mapped_column(Integer, default=100)
+    calls_today: Mapped[int] = mapped_column(Integer, default=0)
+    calls_day: Mapped[str] = mapped_column(String(10), default="")
+    last_status: Mapped[str] = mapped_column(String(32), default="")
+    last_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class DiscoverySource(Base):
     """One discovery pathway. New sources stay off until an operator enables them."""
 

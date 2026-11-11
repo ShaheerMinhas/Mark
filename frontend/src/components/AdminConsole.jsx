@@ -1279,16 +1279,27 @@ function Providers({ onError }) {
   );
 }
 
+function engineStatus(value) {
+  if (value === "no_key") return "no key";
+  if (value === "ok" || value === "blocked" || value === "quota") return value;
+  return value || "no calls yet";
+}
+
 function Sources({ onError }) {
   const [items, setItems] = useState([]);
+  const [engines, setEngines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const body = await adminApi("/api/platform/discovery/sources");
+      const [body, engineBody] = await Promise.all([
+        adminApi("/api/platform/discovery/sources"),
+        adminApi("/api/platform/discovery/search-backends"),
+      ]);
       setItems(body.items || []);
+      setEngines(engineBody.items || []);
     } catch (err) {
       onError(err.message);
     } finally {
@@ -1319,10 +1330,78 @@ function Sources({ onError }) {
     }
   }
 
+  async function saveEngine(engine, event) {
+    event.preventDefault();
+    setNotice("");
+    const body = {
+      enabled: Boolean(engine.enabled),
+      max_requests_per_run: Number(engine.max_requests_per_run),
+      daily_cap: Number(engine.daily_cap),
+    };
+    if (engine.api_key) body.api_key = engine.api_key;
+    if (engine.cx) body.cx = engine.cx;
+    try {
+      const saved = await adminApi(`/api/platform/discovery/search-backends/${engine.name}`, { method: "PATCH", body });
+      setEngines(saved.items || []);
+      setNotice(`Saved ${engine.label}. The key is not shown again.`);
+    } catch (err) {
+      onError(err.message);
+    }
+  }
+
   if (loading) return <div className="empty">Loading sources…</div>;
   return (
     <div className="panel admin-note">
       <p>LinkedIn public search is the first source. It does not log in and it does not open profile pages. Every other source is off until you enable it. HTML pages use the pinned fetch and robots.txt. Official APIs stay closed until their key or contact address is saved. No source invents an email.</p>
+      <h3>Search engines</h3>
+      <p>Each LinkedIn query runs on every enabled engine below, then profiles are merged. Saving a key turns that engine on. DuckDuckGo is already on and runs last. One blocked or quota response does not stop the others.</p>
+      <p className="meta">Environment fallback on the discovery worker: GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX, BRAVE_SEARCH_API_KEY, SERPER_API_KEY, SERPAPI_API_KEY. A saved key is used first. Turn the engine on after setting an environment key.</p>
+      {engines.map((engine) => (
+        <form key={engine.name} className="people-toolbar" onSubmit={(event) => saveEngine(engine, event)}>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={Boolean(engine.enabled)}
+              onChange={(event) => setEngines((current) => current.map((item) => item.name === engine.name ? { ...item, enabled: event.target.checked } : item))}
+            />
+            {engine.label}
+          </label>
+          <label>Requests per run
+            <input type="number" min="0" max="50" aria-label={`${engine.label} requests per run`} value={engine.max_requests_per_run} onChange={(event) => setEngines((current) => current.map((item) => item.name === engine.name ? { ...item, max_requests_per_run: event.target.value } : item))} />
+          </label>
+          <label>Daily cap
+            <input type="number" min="0" aria-label={`${engine.label} daily cap`} value={engine.daily_cap} onChange={(event) => setEngines((current) => current.map((item) => item.name === engine.name ? { ...item, daily_cap: event.target.value } : item))} />
+          </label>
+          {engine.needs_key && (
+            <label>{engine.credential_configured ? "API key (saved)" : "API key"}
+              <input
+                type="password"
+                autoComplete="off"
+                aria-label={`${engine.label} API key`}
+                placeholder={engine.credential_configured ? "saved" : ""}
+                value={engine.api_key || ""}
+                onChange={(event) => setEngines((current) => current.map((item) => item.name === engine.name ? { ...item, api_key: event.target.value } : item))}
+              />
+            </label>
+          )}
+          {engine.needs_cx && (
+            <label>{engine.cx_configured ? "Search engine id (saved)" : "Search engine id (cx)"}
+              <input
+                type="password"
+                autoComplete="off"
+                aria-label="Google search engine id"
+                placeholder={engine.cx_configured ? "saved" : ""}
+                value={engine.cx || ""}
+                onChange={(event) => setEngines((current) => current.map((item) => item.name === engine.name ? { ...item, cx: event.target.value } : item))}
+              />
+            </label>
+          )}
+          <span className="meta">{engineStatus(engine.last_status)} · {engine.calls_today} calls today{engine.last_detail ? ` · ${engine.last_detail}` : ""}{engine.name === "duckduckgo" ? " · runs last" : ""}</span>
+          {engine.env_key && !engine.credential_configured && <span className="meta">Environment key is set.</span>}
+          {engine.needs_cx && engine.env_cx && !engine.cx_configured && <span className="meta">Search engine id is set in the environment.</span>}
+          <button type="submit" className="ghost">Save {engine.label}</button>
+        </form>
+      ))}
       {items.map((source) => (
         <form key={source.name} className="people-toolbar" onSubmit={(event) => save(source, event)}>
           <label className="inline-check">

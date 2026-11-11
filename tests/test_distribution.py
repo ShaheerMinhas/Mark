@@ -97,7 +97,7 @@ def test_rotation_changes_the_query_and_a_second_tick_does_not_duplicate(db, mon
     monkeypatch.setattr("backend.services.discovery_engine.public_source.search_public_profiles", _fetch)
     monkeypatch.setattr(
         "backend.services.discovery_engine.ingest.collect_public_hits",
-        lambda target: __import__(
+        lambda target, db=None: __import__(
             "backend.services.discovery_engine.public_source", fromlist=["search_public_profiles"]
         ).search_public_profiles(target),
     )
@@ -207,7 +207,7 @@ def test_three_customer_limit_teammates_and_replacement(db):
 def test_autonomous_search_still_runs_when_the_cache_is_fresh(db, monkeypatch):
     calls = []
 
-    def _fetch(target):
+    def _fetch(target, db=None):
         calls.append(next_query(target))
         advance_cursor(target)
         return [], "No identifiable public profile was parsed. Nothing was invented."
@@ -286,7 +286,7 @@ def test_a_later_profile_keeps_the_same_allowance(db):
 def test_replace_live_search_is_one_guarded_query_and_stays_off(db, monkeypatch):
     calls = []
 
-    def _fetch(target):
+    def _fetch(target, db=None):
         calls.append(getattr(target, "id", None))
         return (
             [{
