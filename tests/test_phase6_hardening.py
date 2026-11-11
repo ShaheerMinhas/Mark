@@ -97,7 +97,7 @@ def test_fixture_hits_reach_the_cache_and_a_customer_search(db, user, monkeypatc
     monkeypatch.setattr("backend.services.discovery.runner.search_text", _boom)
     monkeypatch.setattr(
         "backend.services.discovery_engine.ingest.collect_public_hits",
-        lambda target: (
+        lambda target, db=None: (
             [
                 {
                     "full_name": "Example Fixture Nora",

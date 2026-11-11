@@ -583,6 +583,39 @@ def archive_cached_company(company_id: int, admin: User = Depends(require_platfo
     return _company_dict(row)
 
 
+class SearchBackendIn(BaseModel):
+    enabled: bool | None = None
+    max_requests_per_run: int | None = None
+    daily_cap: int | None = None
+    api_key: str | None = None
+    cx: str | None = None
+
+
+@router.get("/search-backends")
+def get_search_backends(admin: User = Depends(require_platform_admin), db: Session = Depends(get_db)):
+    del admin
+    from backend.services.discovery_engine.search_backends import search_backend_report
+
+    return {"items": search_backend_report(db, commit=True)}
+
+
+@router.patch("/search-backends/{name}")
+def patch_search_backend(
+    name: str,
+    body: SearchBackendIn,
+    admin: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    del admin
+    from backend.services.discovery_engine.search_backends import search_backend_report, update_search_backend
+
+    try:
+        update_search_backend(db, name, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"items": search_backend_report(db)}
+
+
 class SourceIn(BaseModel):
     enabled: bool | None = None
     priority: int | None = None

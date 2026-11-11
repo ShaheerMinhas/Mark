@@ -8,6 +8,7 @@ are fixed vendor hosts, not operator-supplied URLs.
 
 from __future__ import annotations
 
+import gzip
 import ipaddress
 import socket
 import ssl
@@ -17,6 +18,17 @@ _BLOCKED_HOSTS = {"localhost", "metadata.google.internal", "metadata"}
 _ALLOWED_PORTS = {80, 443}
 _MAX_REDIRECTS = 3
 _MAX_BYTES = 200_000
+
+#: Official search APIs the LinkedIn discovery path may call. Each request still
+#: passes ``allowed_hosts`` of the one host it is about to open.
+SEARCH_API_HOSTS = frozenset(
+    {
+        "www.googleapis.com",
+        "api.search.brave.com",
+        "google.serper.dev",
+        "serpapi.com",
+    }
+)
 
 
 class SsrfError(ValueError):
@@ -80,6 +92,48 @@ def default_resolver(hostname: str) -> list[str]:
     return found
 
 
+def _header_token(value: str) -> str:
+    return "".join(ch for ch in str(value) if 32 <= ord(ch) < 127)
+
+
+def _read_chunks(data: bytes) -> bytes:
+    out = bytearray()
+    rest = data
+    while rest:
+        line, sep, rest = rest.partition(b"\r\n")
+        if not sep:
+            break
+        token = line.split(b";", 1)[0].strip()
+        if not token:
+            break
+        try:
+            size = int(token, 16)
+        except ValueError:
+            break
+        if size == 0:
+            break
+        out += rest[:size]
+        rest = rest[size:]
+        if rest.startswith(b"\r\n"):
+            rest = rest[2:]
+    return bytes(out)
+
+
+def decode_http_body(body: bytes, headers: dict[str, str] | None) -> bytes:
+    """Undo chunked framing and gzip when the response says so. Other bodies stay as read."""
+    headers = headers or {}
+    raw = body or b""
+    if "chunked" in headers.get("transfer-encoding", "").lower():
+        raw = _read_chunks(raw)
+    encoding = headers.get("content-encoding", "").lower()
+    if "gzip" in encoding or raw[:2] == b"\x1f\x8b":
+        try:
+            return gzip.decompress(raw)
+        except OSError:
+            return raw
+    return raw
+
+
 def pinned_opener(
     url: str,
     addresses: list[str],
@@ -88,11 +142,20 @@ def pinned_opener(
     *,
     user_agent: str = "MarkBot/1.0",
     extra_headers: dict[str, str] | None = None,
+    method: str = "GET",
+    body: bytes | None = None,
 ):
     """Connect to a checked address. The Host header and TLS name stay the original host.
 
     Redirects are not followed here. ``safe_fetch`` checks the next URL itself.
+    ``method`` is GET or POST. A POST body is sent with Content-Length.
     """
+    method_name = (method or "GET").upper()
+    if method_name not in {"GET", "POST"}:
+        raise SsrfError("method is not allowed")
+    payload_body = body or b""
+    if method_name == "GET":
+        payload_body = b""
     parsed = urlparse(url)
     host = parsed.hostname
     port = 443 if parsed.scheme == "https" else 80
@@ -106,18 +169,22 @@ def pinned_opener(
         if parsed.query:
             path = f"{path}?{parsed.query}"
         header_lines = [
-            f"GET {path} HTTP/1.1",
+            f"{method_name} {path} HTTP/1.1",
             f"Host: {host}",
-            f"User-Agent: {user_agent}",
+            f"User-Agent: {_header_token(user_agent) or 'MarkBot/1.0'}",
             "Accept: text/html,application/json",
             "Connection: close",
         ]
+        if payload_body:
+            header_lines.append(f"Content-Length: {len(payload_body)}")
         for key, value in (extra_headers or {}).items():
-            if key.lower() in {"host", "connection"}:
+            name = _header_token(key)
+            token = _header_token(value)
+            if not name or name.lower() in {"host", "connection", "content-length"}:
                 continue
-            header_lines.append(f"{key}: {value}")
-        payload = "\r\n".join(header_lines) + "\r\n\r\n"
-        sock.sendall(payload.encode("ascii", errors="strict"))
+            header_lines.append(f"{name}: {token}")
+        payload = ("\r\n".join(header_lines) + "\r\n\r\n").encode("ascii", errors="strict")
+        sock.sendall(payload + payload_body)
         data = b""
         while len(data) <= max_bytes + 65536:
             chunk = sock.recv(8192)
@@ -126,7 +193,7 @@ def pinned_opener(
             data += chunk
     finally:
         sock.close()
-    head, _, body = data.partition(b"\r\n\r\n")
+    head, _, raw_body = data.partition(b"\r\n\r\n")
     lines = head.decode("iso-8859-1", errors="replace").split("\r\n")
     try:
         status = int(lines[0].split(" ", 2)[1])
@@ -141,9 +208,10 @@ def pinned_opener(
         headers[key.strip().lower()] = value.strip()
         if key.lower() == "location":
             location = value.strip()
-    if len(body) > max_bytes:
-        body = body[:max_bytes]
-    return status, location, body, headers
+    response_body = decode_http_body(raw_body, headers)
+    if len(response_body) > max_bytes:
+        response_body = response_body[:max_bytes]
+    return status, location, response_body, headers
 
 
 def safe_fetch(

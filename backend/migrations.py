@@ -131,6 +131,23 @@ def _step_budgets(bind) -> None:
         session.close()
 
 
+def _step_search_backends(bind) -> None:
+    """Search-engine rows for LinkedIn discovery. No keys are written and nobody is created."""
+    from backend import models  # noqa: F401
+    from backend.services.discovery_engine.search_backends import ensure_search_backends
+
+    Base.metadata.create_all(
+        bind=bind,
+        tables=[Base.metadata.tables["discovery_search_backends"]],
+    )
+    session = Session(bind=bind)
+    try:
+        ensure_search_backends(session)
+        session.commit()
+    finally:
+        session.close()
+
+
 def _step_distribution(bind) -> None:
     """Allocation tables. Existing workspace leads are not deleted or copied into new people."""
     from backend.services.discovery_engine.distribution import backfill_from_existing_leads, ensure_policy
@@ -149,6 +166,7 @@ STEPS: tuple[tuple[int, str, object], ...] = (
     (3, "targeting_rules", _step_targeting),
     (4, "enrichment_budgets", _step_budgets),
     (5, "lead_distribution", _step_distribution),
+    (6, "linkedin_search_backends", _step_search_backends),
 )
 
 

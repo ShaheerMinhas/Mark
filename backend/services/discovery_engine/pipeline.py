@@ -104,9 +104,10 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
 
         hits = []
         notes = []
+        public_note = ""
         if linkedin_enabled(db):
-            hits, discover_detail = collect_public_hits(target)
-            notes.append(discover_detail)
+            hits, public_note = collect_public_hits(target, db)
+            notes.append(public_note)
         else:
             notes.append("LinkedIn search is disabled. No LinkedIn request was sent.")
         extra_hits, extra_note = collect_extra_sources(db, target)
@@ -120,10 +121,11 @@ def execute_run(db: Session, run: DiscoveryRun, *, attempt: int = 1) -> None:
             queued = queue_contact_jobs(db, list(stats.get("new_ids") or []), run.id)
             discover_status = "ingested"
             discover_detail = (
+                f"{public_note} "
                 f"Ingested {stats['ingested']} public people. "
                 f"{stats['duplicates']} were already cached. {stats['suppressed']} were suppressed. "
                 f"Queued {queued} contact enrichment jobs. {extra_note} Company research was not called."
-            )
+            ).strip()
         else:
             discover_status = "blocked"
 

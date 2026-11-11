@@ -433,7 +433,7 @@ def replace_person(
         }
     from backend.services.discovery_engine.ingest import collect_public_hits, ingest_hits
 
-    hits, live_detail = collect_public_hits(target)
+    hits, _live_detail = collect_public_hits(target, db)
     if hits:
         ingest_hits(db, hits)
         found = _take_next("A different person from the autonomous search was added. The original lead was kept.")
@@ -442,7 +442,7 @@ def replace_person(
     return {
         "status": "exhausted",
         "kept_lead_id": lead.id,
-        "detail": live_detail or "No other eligible person is available. The original lead was kept.",
+        "detail": "No other eligible person is available. The original lead was kept.",
     }
 
 
